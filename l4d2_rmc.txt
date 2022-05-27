@@ -1,0 +1,33 @@
+"Games"
+{
+    "left4dead2"
+    {
+		"Signatures"
+		{
+			"SetHumanSpec"
+			{
+				"library"	"server"
+				"linux"		"@_ZN11SurvivorBot17SetHumanSpectatorEP13CTerrorPlayer"
+				"windows"	"******\x83\xBE****\x00\x7E\x07\x32\xC0\x5E\x5D\xC2\x04\x00\x8B\x0D"
+			}
+			"TakeOverBot"
+			{
+				"library"	"server"
+				"linux"		"@_ZN13CTerrorPlayer11TakeOverBotEb"
+				"windows"	"\x55\x8B\xEC\x81\xEC****\xA1****\x33\xC5\x89\x45\xFC\x53\x56\x8D\x85"
+			}
+			"RoundRespawn"
+			{
+				"library"	"server"
+				"linux"		"@_ZN9CCSPlayer12RoundRespawnEv"
+				"windows"	"\x56\x8B\xF1\x8B\x06\x8B\x90\x38\x06\x00\x00"
+			}
+			"GoAwayFromKeyboard"
+			{
+				"library"	"server"
+				"linux"		"@_ZN13CTerrorPlayer18GoAwayFromKeyboardEv"
+				"windows"	"******\x53\x56\x57\x8B*\x8B*\x8B\x90****\x8B"
+			}
+		}
+    }
+}
