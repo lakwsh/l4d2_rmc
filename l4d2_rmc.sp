@@ -11,6 +11,7 @@
 #define isVaildPlayer(%1)	(isVaild(%1) && isPlayer(%1))
 #define isSpectator(%1)		GetClientTeam(%1)==TEAM_SPECTATOR
 #define isSurvivor(%1)		GetClientTeam(%1)==TEAM_SURVIVOR
+#define isAdmin(%1)			GetUserAdmin(%1)!=INVALID_ADMIN_ID
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
 ConVar cMax, cCanAway, cAwayMode;
@@ -27,7 +28,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.6.0",
+	version = "1.7.0",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -77,9 +78,9 @@ public void OnPluginStart(){
 	RegConsoleCmd("sm_away", Cmd_Away);
 	RegConsoleCmd("sm_zs", Cmd_Kill);
 	RegConsoleCmd("sm_info", Cmd_ShowInfo);
+	RegConsoleCmd("sm_setmax", Cmd_SetMax);
 	RegAdminCmd("sm_fh", Cmd_Spawn, ADMFLAG_CHEATS, "复活");
 	RegAdminCmd("sm_kb", Cmd_KickBot, ADMFLAG_KICK, "强制踢出机器人");
-	RegAdminCmd("sm_setmax", Cmd_SetMax, ADMFLAG_KICK, "修改最大玩家数");
 
 	cCanAway = CreateConVar("rmc_away", "1", "允许非管理员使用!away加入观察者", 0, true, 0.0, true, 1.0);
 	cAwayMode = CreateConVar("rmc_awaymode", "0", "加入观察者类型 0=切换阵营模式 1=普通模式", 0, true, 0.0, true, 1.0);
@@ -123,11 +124,43 @@ public Action Cmd_SetMax(int client, int args){
 		GetCmdArg(1, tmp, sizeof(tmp));
 		int max = StringToInt(tmp);
 		if(max<1 || max>16) max = 4;
-		SetConVarInt(cMax, max);
-		CheckSlots();	// unreserved
-		PrintToChatAll("\x05[提示]\x01 已修改人数上限为%d人", max);
+		if(isAdmin(client)){
+			setMax(max);
+		}else{
+			if(IsVoteInProgress()){
+				PrintToChatAll("\x05[提示]\x01 投票进行中,无法修改人数上限");
+				return Plugin_Handled;
+			}
+			Menu vote = new Menu(voteCallback, MenuAction_VoteEnd);
+			vote.SetTitle("修改人数上限为%d", max);
+			vote.AddItem(tmp, "Yes");	// 0
+			vote.AddItem("###RMC_NO###", "No");	// 1
+			vote.ExitButton = false;
+			vote.DisplayVoteToAll(20);
+		}
 	}
 	return Plugin_Handled;
+}
+
+public int voteCallback(Menu menu, MenuAction action, int param1, int param2){
+	if(action==MenuAction_VoteEnd){
+		int votes, totalVotes;
+		GetMenuVoteInfo(param2, votes, totalVotes);
+		if(param1==1 || votes!=totalVotes){
+			PrintToChatAll("\x05[提示]\x01 投票未全票通过,人数上限未修改");
+		}else{
+			char item[PLATFORM_MAX_PATH], display[64];
+			menu.GetItem(0, item, sizeof(item), _, display, sizeof(display));
+			setMax(StringToInt(item));
+		}
+	}
+	return 0;
+}
+
+void setMax(int max){
+	SetConVarInt(cMax, max);
+	CheckSlots();	// unreserved
+	PrintToChatAll("\x05[提示]\x01 已修改人数上限为%d人", max);
 }
 
 public void OnMapStart(){
