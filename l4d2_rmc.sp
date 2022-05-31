@@ -28,7 +28,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.7.0",
+	version = "1.7.1",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -99,7 +99,7 @@ public void OnActivate(Event event, const char[] name, bool dontBroadcast){
 	int uid = GetEventInt(event, "userid", 0);
 	int client = GetClientOfUserId(uid);
 	if(isVaildPlayer(client)){
-		CheckSlots();
+		if(Enable) CheckSlots();
 		CreateTimer(2.5, JointhemageR, uid);
 	}
 }
@@ -124,7 +124,7 @@ public Action Cmd_SetMax(int client, int args){
 		GetCmdArg(1, tmp, sizeof(tmp));
 		int max = StringToInt(tmp);
 		if(max<1 || max>16) max = 4;
-		if(isAdmin(client)){
+		if(!client || isAdmin(client)){	// console
 			setMax(max);
 		}else{
 			if(IsVoteInProgress()){
@@ -173,21 +173,26 @@ public void OnRoundEnd(Event event, const char[] name, bool dontBroadcast){
 }
 
 public void OnClientDisconnected(client){
-	if(!RoundEnd && !IsFakeClient(client)) CheckSlots();
+	if(Enable && !RoundEnd && !IsFakeClient(client)) CheckSlots();
 }
 
 void CheckSlots(){
-	if(!Enable) return;
-	int max = GetConVarInt(cMax), total = Count(Survivor), need = Count(Player);
-	if(total>max) BotControl(max);
-	if(need>max || need-total<=0) return;
+	int max = GetConVarInt(cMax), player = Count(Player);
+	if(max<=4 || Count(Survivor)>max) BotControl(max);
 
-	if(max>4) ServerCommand("sv_unreserved");
-	else ServerCommand("sv_allow_lobby_connect_only 1");
-	SetConVarInt(FindConVar("survivor_limit"), need);
-	SetConVarInt(FindConVar("z_max_player_zombies"), need);
-	ServerCommand("sv_setmax %d", need>8?31:18);
-	BotControl(need);
+	if(max>4 && player>=4){
+		ServerCommand("sv_unreserved");
+		BotControl(player);
+	}else{
+		ServerCommand("sv_setmax 18");
+		ServerCommand("sv_allow_lobby_connect_only 1");
+	}
+
+	int total = Count(Survivor);
+	if(!total) return;
+	if(total>8) ServerCommand("sv_setmax 31");
+	SetConVarInt(FindConVar("survivor_limit"), max);	// 会踢出bot
+	SetConVarInt(FindConVar("z_max_player_zombies"), total);
 }
 
 public Action Cmd_KickBot(int client, int args){
