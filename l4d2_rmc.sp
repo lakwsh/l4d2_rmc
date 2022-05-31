@@ -28,7 +28,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.7.1",
+	version = "1.7.2",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -266,7 +266,16 @@ void BotControl(int need){
 }
 
 public Action Cmd_Spawn(int client, int args){
-	if(isVaildPlayer(client)) SDKCall(hRespawn, client);
+	if(!isVaildPlayer(client) || IsPlayerAlive(client)) return Plugin_Handled;
+	SDKCall(hRespawn, client);
+	for(int i = 1; i<=MaxClients; i++){
+		if(i!=client && isPlayer(i) && IsPlayerAlive(i)){
+			float Origin[3];
+			GetClientAbsOrigin(i, Origin);
+			TeleportEntity(client, Origin, NULL_VECTOR, NULL_VECTOR);
+			break;
+		}
+	}
 	return Plugin_Handled;
 }
 
