@@ -29,7 +29,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.8.1",
+	version = "1.8.2",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -102,11 +102,11 @@ public void OnActivate(Event event, const char[] name, bool dontBroadcast){
 	int client = GetClientOfUserId(uid);
 	if(isVaildPlayer(client)){
 		if(Enable) CheckSlots();
-		CreateTimer(2.5, JointhemageR, uid, TIMER_FLAG_NO_MAPCHANGE);
+		CreateTimer(2.5, JoinTeam, uid, TIMER_FLAG_NO_MAPCHANGE);
 	}
 }
 
-public Action JointhemageR(Handle timer, any uid){
+public Action JoinTeam(Handle timer, any uid){
 	int client = GetClientOfUserId(uid);
 	if(isVaildPlayer(client)){
 		PrintToChat(client, "\x04[提示] \x01多人插件:\x05 %s", Enable?"开启":"关闭");
@@ -115,21 +115,30 @@ public Action JointhemageR(Handle timer, any uid){
 		if(Enable){
 			Cmd_ShowInfo(client, 0);
 			if(isSpectator(client)) Join(client);
-			if(isSurvivor(client)){
-				int id = GetSteamAccountID(client);
-				if(!id){
-					ForcePlayerSuicide(client);
-					PrintToChat(client, "\x05[提示] \x04无法验证steamid,默认死亡状态");
-				}else{
-					for(int j = 0; j<sizeof(plList) && plList[j][0]; j++){
-						if(plList[j][0]==id){
-							if(GetClientHealth(client)<plList[j][1]) break;
-							if(plList[j][1]) SetEntityHealth(client, plList[j][1]);
-							else ForcePlayerSuicide(client);
-							PrintToChatAll("\x05[提示] \x04检测到 \x03%N \x04重复进服,恢复上次血量", client);
-							break;
-						}
+			CreateTimer(1.0, UpdateHealth, uid, TIMER_FLAG_NO_MAPCHANGE);
+		}
+	}
+	return Plugin_Stop;
+}
+
+public Action UpdateHealth(Handle timer, any uid){
+	int client = GetClientOfUserId(uid);
+	if(isVaildPlayer(client) && isSurvivor(client)){
+		int id = GetSteamAccountID(client);
+		if(!id){
+			ForcePlayerSuicide(client);
+			PrintToChat(client, "\x05[提示] \x04无法验证steamid,默认死亡状态");
+		}else{
+			for(int j = 0; j<sizeof(plList) && plList[j][0]; j++){
+				if(plList[j][0]==id){
+					if(GetClientHealth(client)<plList[j][1]) break;
+					switch(plList[j][1]){
+						case -1: return Plugin_Stop;
+						case 0: ForcePlayerSuicide(client);
+						default: SetEntityHealth(client, plList[j][1]);
 					}
+					PrintToChatAll("\x05[提示] \x04检测到 \x03%N \x04重复进服,恢复上次血量", client);
+					break;
 				}
 			}
 		}
@@ -179,7 +188,6 @@ public int voteCallback(Menu menu, MenuAction action, int param1, int param2){
 void setMax(int max){
 	SetConVarInt(cMax, max);
 	CheckSlots();	// unreserved
-	if(max<=4) ServerCommand("sv_allow_lobby_connect_only 1");
 	PrintToChatAll("\x05[提示]\x01 已修改人数上限为%d人", max);
 }
 
@@ -202,7 +210,11 @@ public void OnClientDisconnect(client){
 			plList[j][1] = plList[j-1][1];
 		}
 		plList[0][0] = GetSteamAccountID(client);
-		plList[0][1] = IsPlayerAlive(client)?GetClientHealth(client):0;	// TODO: 倒地次数
+		if(IsClientInGame(client) && isSurvivor(client)){	// TODO: 倒地次数
+			if(IsPlayerAlive(client)) plList[0][1] = GetClientHealth(client);
+			else plList[0][1] = 0;
+		}
+		else plList[0][1] = -1;
 		CheckSlots();
 	}
 }
@@ -214,10 +226,7 @@ void CheckSlots(){
 	if(max>4 && player>=4){
 		ServerCommand("sv_unreserved");
 		BotControl(player);
-	}else{
-		ServerCommand("sv_setmax 18");
-		//ServerCommand("sv_allow_lobby_connect_only 1"); // debug mode
-	}
+	}else ServerCommand("sv_setmax 18");
 
 	int total = Count(Survivor);
 	if(!total) return;
