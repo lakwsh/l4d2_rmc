@@ -29,7 +29,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.8.0",
+	version = "1.8.1",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -82,6 +82,7 @@ public void OnPluginStart(){
 	RegConsoleCmd("sm_setmax", Cmd_SetMax);
 	RegAdminCmd("sm_fh", Cmd_Spawn, ADMFLAG_CHEATS, "复活");
 	RegAdminCmd("sm_kb", Cmd_KickBot, ADMFLAG_KICK, "强制踢出机器人");
+	RegAdminCmd("sm_sb", Cmd_SetBot, ADMFLAG_KICK, "设置生还者人数");
 
 	cCanAway = CreateConVar("rmc_away", "1", "允许非管理员使用!away加入观察者", 0, true, 0.0, true, 1.0);
 	cAwayMode = CreateConVar("rmc_awaymode", "0", "加入观察者类型 0=切换阵营模式 1=普通模式", 0, true, 0.0, true, 1.0);
@@ -208,7 +209,7 @@ public void OnClientDisconnect(client){
 
 void CheckSlots(){
 	int max = GetConVarInt(cMax), player = Count(Player);
-	if(max<=4 || Count(Survivor)>max) BotControl(max);
+	if(Count(Survivor)>max) BotControl(max);
 
 	if(max>4 && player>=4){
 		ServerCommand("sv_unreserved");
@@ -228,6 +229,15 @@ void CheckSlots(){
 public Action Cmd_KickBot(int client, int args){
 	BotControl(0);
 	PrintToChatAll("\x05[提示]\x01 已踢出所有机器人");
+	return Plugin_Handled;
+}
+
+public Action Cmd_SetBot(int client, int args){
+	if(args==1){
+		char tmp[3];
+		GetCmdArg(1, tmp, sizeof(tmp));
+		BotControl(StringToInt(tmp));
+	}
 	return Plugin_Handled;
 }
 
@@ -267,6 +277,20 @@ public Action Cmd_ShowInfo(int client, int args){
 	return Plugin_Handled;
 }
 
+public Action Cmd_Spawn(int client, int args){
+	if(!isVaildPlayer(client) || IsPlayerAlive(client)) return Plugin_Handled;
+	SDKCall(hRespawn, client);
+	for(int i = 1; i<=MaxClients; i++){
+		if(i!=client && isPlayer(i) && IsPlayerAlive(i)){
+			float Origin[3];
+			GetClientAbsOrigin(i, Origin);
+			TeleportEntity(client, Origin, NULL_VECTOR, NULL_VECTOR);
+			break;
+		}
+	}
+	return Plugin_Handled;
+}
+
 void BotControl(int need){
 	int total = Count(Survivor);
 	bool kick = total>need;
@@ -296,20 +320,6 @@ void BotControl(int need){
 			} while(--num);
 		}
 	}
-}
-
-public Action Cmd_Spawn(int client, int args){
-	if(!isVaildPlayer(client) || IsPlayerAlive(client)) return Plugin_Handled;
-	SDKCall(hRespawn, client);
-	for(int i = 1; i<=MaxClients; i++){
-		if(i!=client && isPlayer(i) && IsPlayerAlive(i)){
-			float Origin[3];
-			GetClientAbsOrigin(i, Origin);
-			TeleportEntity(client, Origin, NULL_VECTOR, NULL_VECTOR);
-			break;
-		}
-	}
-	return Plugin_Handled;
 }
 
 void TakeOverBot(client, bot){
