@@ -15,7 +15,7 @@
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
 ConVar cMax, cCanAway, cAwayMode;
-bool Enable, CanAway, RoundEnd;
+bool Enable, CanAway, Reconnect;
 int plList[32][2];
 
 enum Type{
@@ -29,7 +29,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.8.2",
+	version = "1.8.3",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -72,7 +72,8 @@ public void OnPluginStart(){
 
 	CloseHandle(hGameData);
 
-	HookEvent("round_end", OnRoundEnd, EventHookMode_PostNoCopy);
+	HookEvent("round_start", OnRoundStart, EventHookMode_PostNoCopy);
+	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_PostNoCopy);
 	HookEvent("player_activate", OnActivate, EventHookMode_PostNoCopy);
 
 	RegConsoleCmd("sm_jg", Cmd_Join);
@@ -95,6 +96,19 @@ public void OnPluginStart(){
 public void OnEnableChanged(ConVar convar, const char[] oldValue, const char[] newValue){
 	int val = StringToInt(newValue);
 	Enable = val!=4 && val!=-1;
+}
+
+public void OnMapStart(){
+	CanAway = GetConVarBool(cCanAway);
+	plList[0][0] = 0;	// reset
+}
+
+public void OnRoundStart(Event event, const char[] name, bool dontBroadcast){
+	Reconnect = true;
+}
+
+public void OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast){
+	Reconnect = false;
 }
 
 public void OnActivate(Event event, const char[] name, bool dontBroadcast){
@@ -191,18 +205,8 @@ void setMax(int max){
 	PrintToChatAll("\x05[提示]\x01 已修改人数上限为%d人", max);
 }
 
-public void OnMapStart(){
-	RoundEnd = false;
-	CanAway = GetConVarBool(cCanAway);
-	plList[0][0] = 0;	// reset
-}
-
-public void OnRoundEnd(Event event, const char[] name, bool dontBroadcast){
-	RoundEnd = true;
-}
-
 public void OnClientDisconnect(client){
-	if(Enable && !RoundEnd && !IsFakeClient(client)){
+	if(Enable && !Reconnect && !IsFakeClient(client)){
 		int i = 0;
 		for(; i<sizeof(plList)-1 && plList[i][0]; i++){}	// count
 		for(int j = i; j>0; j--){
@@ -220,6 +224,7 @@ public void OnClientDisconnect(client){
 }
 
 void CheckSlots(){
+	if(Reconnect) return;
 	int max = GetConVarInt(cMax), player = Count(Player);
 	if(Count(Survivor)>max) BotControl(max);
 
