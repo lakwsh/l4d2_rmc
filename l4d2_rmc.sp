@@ -5,10 +5,10 @@
 #define TEAM_SURVIVOR	2
 #define TEAM_INFECTED	3
 
-#define isVaild(%1)			(%1>0 && %1<=MaxClients)
+#define isValid(%1)			(%1>0 && %1<=MaxClients)
 #define isBot(%1)			(IsClientInGame(%1) && IsFakeClient(%1))
 #define isPlayer(%1)		(IsClientInGame(%1) && !IsFakeClient(%1))
-#define isVaildPlayer(%1)	(isVaild(%1) && isPlayer(%1))
+#define isValidPlayer(%1)	(isValid(%1) && isPlayer(%1))
 #define isSpectator(%1)		GetClientTeam(%1)==TEAM_SPECTATOR
 #define isSurvivor(%1)		GetClientTeam(%1)==TEAM_SURVIVOR
 #define isAdmin(%1)			GetUserAdmin(%1)!=INVALID_ADMIN_ID
@@ -114,7 +114,7 @@ public void OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast){
 public void OnActivate(Event event, const char[] name, bool dontBroadcast){
 	int uid = GetEventInt(event, "userid", 0);
 	int client = GetClientOfUserId(uid);
-	if(isVaildPlayer(client)){
+	if(isValidPlayer(client)){
 		if(Enable) CheckSlots();
 		CreateTimer(2.5, JoinTeam, uid, TIMER_FLAG_NO_MAPCHANGE);
 	}
@@ -122,7 +122,7 @@ public void OnActivate(Event event, const char[] name, bool dontBroadcast){
 
 public Action JoinTeam(Handle timer, any uid){
 	int client = GetClientOfUserId(uid);
-	if(isVaildPlayer(client)){
+	if(isValidPlayer(client)){
 		PrintToChat(client, "\x04[提示] \x01多人插件:\x05 %s", Enable?"开启":"关闭");
 		PrintToChat(client, "\x05[说明] \x03!setmax \x04修改人数上限, \x03!info \x04显示人数信息");
 		PrintToChat(client, "\x05[说明] \x03!jg \x04加入生还者, \x03!away \x04加入观察者, \x03!kb \x04踢出机器人");
@@ -137,7 +137,7 @@ public Action JoinTeam(Handle timer, any uid){
 
 public Action UpdateHealth(Handle timer, any uid){
 	int client = GetClientOfUserId(uid);
-	if(isVaildPlayer(client) && isSurvivor(client)){
+	if(isValidPlayer(client) && isSurvivor(client)){
 		int id = GetSteamAccountID(client);
 		if(!id){
 			ForcePlayerSuicide(client);
@@ -256,7 +256,7 @@ public Action Cmd_SetBot(int client, int args){
 }
 
 public Action Cmd_Join(int client, int args){
-	if(isVaildPlayer(client)){
+	if(isValidPlayer(client)){
 		if(isSpectator(client)) Join(client);
 		else PrintToChat(client, "\x05[加入失败] \x04请先加入观察者阵营");
 	}
@@ -264,7 +264,7 @@ public Action Cmd_Join(int client, int args){
 }
 
 public Action Cmd_Kill(int client, int args){
-	if(isVaildPlayer(client)){
+	if(isValidPlayer(client)){
 		if(IsPlayerAlive(client)){
 			ForcePlayerSuicide(client);
 			char name[32];
@@ -292,7 +292,7 @@ public Action Cmd_ShowInfo(int client, int args){
 }
 
 public Action Cmd_Spawn(int client, int args){
-	if(!isVaildPlayer(client) || IsPlayerAlive(client)) return Plugin_Handled;
+	if(!isValidPlayer(client) || IsPlayerAlive(client)) return Plugin_Handled;
 	SDKCall(hRespawn, client);
 	for(int i = 1; i<=MaxClients; i++){
 		if(i!=client && isPlayer(i) && IsPlayerAlive(i)){
@@ -321,7 +321,7 @@ void BotControl(int need){
 			GetClientAbsOrigin(i, Origin);
 			do{
 				int botNo = CreateFakeClient("Bot");
-				if(!isVaild(botNo)) SetFailState("Error in CreateBot");
+				if(!isValid(botNo)) SetFailState("Error in CreateBot");
 				ChangeClientTeam(botNo, TEAM_SURVIVOR);
 				DispatchKeyValue(botNo, "classname", "SurvivorBot");
 				DispatchSpawn(botNo);
