@@ -14,9 +14,9 @@
 #define isAdmin(%1)			GetUserAdmin(%1)!=INVALID_ADMIN_ID
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
-ConVar cMax, cCanAway, cAwayMode;
+ConVar cMax, cCanAway, cAwayMode, cDefaultSlots;
 bool Enable, CanAway, Reconnect;
-int plList[32][2];
+int DefaultSlots, plList[32][2];
 
 enum Type{
 	Bot,
@@ -29,7 +29,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.8.3",
+	version = "1.8.4_beta",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -37,7 +37,6 @@ public void OnPluginStart(){
 	cMax = FindConVar("sv_maxplayers");
 	if(cMax==INVALID_HANDLE) SetFailState("L4DToolZ not found!");
 	cMax.AddChangeHook(OnEnableChanged);
-	Enable = GetConVarInt(cMax)!=-1;
 
 	GameData hGameData = new GameData("l4d2_rmc");
 	if(!hGameData){
@@ -87,19 +86,23 @@ public void OnPluginStart(){
 
 	cCanAway = CreateConVar("rmc_away", "1", "允许非管理员使用!away加入观察者", 0, true, 0.0, true, 1.0);
 	cAwayMode = CreateConVar("rmc_awaymode", "0", "加入观察者类型 0=切换阵营模式 1=普通模式", 0, true, 0.0, true, 1.0);
+	cDefaultSlots = CreateConVar("rmc_awaymode", "4", "默认玩家数", 0, true, 1.0, true, 16.0);
 	AutoExecConfig(true, "l4d2_rmc");
 
 	SetConVarBounds(FindConVar("survivor_limit"), ConVarBound_Upper, true, 16.0);
 	SetConVarBounds(FindConVar("z_max_player_zombies"), ConVarBound_Upper, true, 16.0);
+
+	DefaultSlots = GetConVarInt(cDefaultSlots);
+	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots); // Enable
 }
 
 public void OnEnableChanged(ConVar convar, const char[] oldValue, const char[] newValue){
-	int val = StringToInt(newValue);
-	Enable = val!=4 && val!=-1;
+	Enable = StringToInt(newValue)!=-1;
 }
 
 public void OnMapStart(){
 	CanAway = GetConVarBool(cCanAway);
+	DefaultSlots = GetConVarInt(cDefaultSlots);
 	plList[0][0] = 0;	// reset
 }
 
@@ -110,6 +113,10 @@ public void OnRoundStart(Event event, const char[] name, bool dontBroadcast){
 public void OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast){
 	Reconnect = false;
 }
+
+//public void OnFinaleWin(Event event, const char[] name, bool dontBroadcast){
+//	SetConVarInt(cMax, -1);	// reset
+//}
 
 public void OnActivate(Event event, const char[] name, bool dontBroadcast){
 	int uid = GetEventInt(event, "userid", 0);
@@ -165,7 +172,7 @@ public Action Cmd_SetMax(int client, int args){
 		char tmp[3];
 		GetCmdArg(1, tmp, sizeof(tmp));
 		int max = StringToInt(tmp);
-		if(max<1 || max>16) max = 4;
+		if(max<1 || max>16) max = DefaultSlots;
 		if(!client || isAdmin(client)){	// console
 			setMax(max);
 		}else{
@@ -200,7 +207,7 @@ public int voteCallback(Menu menu, MenuAction action, int param1, int param2){
 }
 
 void setMax(int max){
-	SetConVarInt(cMax, max);
+	SetConVarInt(cMax, max==4?-1:max);
 	CheckSlots();	// unreserved
 	PrintToChatAll("\x05[提示]\x01 已修改人数上限为%d人", max);
 }
@@ -228,7 +235,7 @@ void CheckSlots(){
 	int max = GetConVarInt(cMax), player = Count(Player);
 	if(Count(Survivor)>max) BotControl(max);
 
-	if(max>4 && player>=4){
+	if(max>DefaultSlots && player>=DefaultSlots){
 		ServerCommand("sv_unreserved");
 		BotControl(player);
 	}else ServerCommand("sv_setmax 18");
