@@ -15,7 +15,7 @@
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
 ConVar cMax, cCanAway, cAwayMode, cDefaultSlots;
-bool Enable, CanAway, Reconnect;
+bool Enable = false, CanAway, Reconnect = false;
 int DefaultSlots, plList[32][2];
 
 enum Type{
@@ -29,7 +29,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.8.4_beta",
+	version = "1.8.4_beta1",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -86,14 +86,14 @@ public void OnPluginStart(){
 
 	cCanAway = CreateConVar("rmc_away", "1", "允许非管理员使用!away加入观察者", 0, true, 0.0, true, 1.0);
 	cAwayMode = CreateConVar("rmc_awaymode", "0", "加入观察者类型 0=切换阵营模式 1=普通模式", 0, true, 0.0, true, 1.0);
-	cDefaultSlots = CreateConVar("rmc_awaymode", "4", "默认玩家数", 0, true, 1.0, true, 16.0);
+	cDefaultSlots = CreateConVar("rmc_defaultslots", "4", "默认玩家数", 0, true, 1.0, true, 16.0);
 	AutoExecConfig(true, "l4d2_rmc");
 
 	SetConVarBounds(FindConVar("survivor_limit"), ConVarBound_Upper, true, 16.0);
 	SetConVarBounds(FindConVar("z_max_player_zombies"), ConVarBound_Upper, true, 16.0);
 
 	DefaultSlots = GetConVarInt(cDefaultSlots);
-	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots); // Enable
+	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots);
 }
 
 public void OnEnableChanged(ConVar convar, const char[] oldValue, const char[] newValue){
@@ -208,7 +208,7 @@ public int voteCallback(Menu menu, MenuAction action, int param1, int param2){
 
 void setMax(int max){
 	SetConVarInt(cMax, max==4?-1:max);
-	CheckSlots();	// unreserved
+	if(max!=4) CheckSlots();	// unreserved
 	PrintToChatAll("\x05[提示]\x01 已修改人数上限为%d人", max);
 }
 
