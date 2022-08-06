@@ -14,7 +14,7 @@
 #define isAdmin(%1)			GetUserAdmin(%1)!=INVALID_ADMIN_ID
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
-ConVar cMax, cCanAway, cAwayMode, cDefaultSlots;
+ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed;
 bool Enable = false, CanAway, Reconnect = false;
 int DefaultSlots, plList[32][2];
 
@@ -29,7 +29,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.8.4_beta1",
+	version = "1.9.0",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -87,6 +87,7 @@ public void OnPluginStart(){
 	cCanAway = CreateConVar("rmc_away", "1", "允许非管理员使用!away加入观察者", 0, true, 0.0, true, 1.0);
 	cAwayMode = CreateConVar("rmc_awaymode", "0", "加入观察者类型 0=切换阵营模式 1=普通模式", 0, true, 0.0, true, 1.0);
 	cDefaultSlots = CreateConVar("rmc_defaultslots", "4", "默认玩家数", 0, true, 1.0, true, 16.0);
+	cMultMed = CreateConVar("rmc_multmed", "1", "开启多倍药物", 0, true, 0.0, true, 1.0);
 	AutoExecConfig(true, "l4d2_rmc");
 
 	SetConVarBounds(FindConVar("survivor_limit"), ConVarBound_Upper, true, 16.0);
@@ -134,6 +135,7 @@ public Action JoinTeam(Handle timer, any uid){
 		PrintToChat(client, "\x05[说明] \x03!setmax \x04修改人数上限, \x03!info \x04显示人数信息");
 		PrintToChat(client, "\x05[说明] \x03!jg \x04加入生还者, \x03!away \x04加入观察者, \x03!kb \x04踢出机器人");
 		if(Enable){
+			if(GetConVarInt(cMultMed)==1) PrintToChat(client, "\x04[提示] \x01多倍药物:\x05 已开启");
 			Cmd_ShowInfo(client, 0);
 			if(isSpectator(client)) Join(client);
 			CreateTimer(1.0, UpdateHealth, uid, TIMER_FLAG_NO_MAPCHANGE);
@@ -230,6 +232,25 @@ public void OnClientDisconnect(client){
 	}
 }
 
+void SetEntCount(const char[] ent, int count){
+	int idx = FindEntityByClassname(-1, ent);
+	while(idx != -1){
+		DispatchKeyValueInt(idx, "count", count);
+		idx = FindEntityByClassname(idx, ent);
+	}
+}
+
+void SetMultMed(int slots){
+	int mult = (slots-1)/4+1;
+	//SetEntCount("weapon_defibrillator_spawn", mult);	//电击器
+	//SetEntCount("weapon_first_aid_kit_spawn", mult);	//医疗包
+	SetEntCount("weapon_pain_pills_spawn", mult);		//止痛药
+	SetEntCount("weapon_adrenaline_spawn", mult);		//肾上腺素
+	//SetEntCount("weapon_molotov_spawn", mult);		//燃烧瓶
+	//SetEntCount("weapon_vomitjar_spawn", mult);		//胆汁罐
+	//SetEntCount("weapon_pipe_bomb_spawn", mult);		//土质炸弹
+}
+
 void CheckSlots(){
 	if(Reconnect) return;
 	int max = GetConVarInt(cMax), player = Count(Player);
@@ -242,6 +263,7 @@ void CheckSlots(){
 
 	int total = Count(Survivor);
 	if(!total) return;
+	if(total>4 && GetConVarInt(cMultMed)==1) SetMultMed(total);
 	if(total>8) ServerCommand("sv_setmax 31");
 	SetConVarInt(FindConVar("survivor_limit"), max);	// 会踢出bot
 	SetConVarInt(FindConVar("z_max_player_zombies"), total);
