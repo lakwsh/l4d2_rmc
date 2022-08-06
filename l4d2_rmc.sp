@@ -132,8 +132,8 @@ public Action JoinTeam(Handle timer, any uid){
 	int client = GetClientOfUserId(uid);
 	if(isValidPlayer(client)){
 		PrintToChat(client, "\x04[提示] \x01多人插件:\x05 %s", Enable?"开启":"关闭");
-		PrintToChat(client, "\x05[说明] \x03!setmax \x04修改人数上限, \x03!info \x04显示人数信息");
-		PrintToChat(client, "\x05[说明] \x03!jg \x04加入生还者, \x03!away \x04加入观察者, \x03!kb \x04踢出机器人");
+		PrintToChat(client, "\x05[指令] \x03!setmax \x04修改人数上限, \x03!info \x04显示人数信息, \x03!zs \x04自杀");
+		PrintToChat(client, "\x05[指令] \x03!jg \x04加入生还者, \x03!away \x04加入观察者, \x03!kb \x04踢出机器人");
 		if(Enable){
 			if(GetConVarInt(cMultMed)==1) PrintToChat(client, "\x04[提示] \x01多倍药物:\x05 已开启");
 			Cmd_ShowInfo(client, 0);
