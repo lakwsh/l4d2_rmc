@@ -29,7 +29,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.9.0",
+	version = "1.9.1",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -108,6 +108,7 @@ public void OnMapStart(){
 }
 
 public void OnRoundStart(Event event, const char[] name, bool dontBroadcast){
+	plList[0][0] = 0;	// reset
 	Reconnect = true;
 }
 
@@ -245,7 +246,7 @@ void SetMultMed(int slots){
 	//SetEntCount("weapon_defibrillator_spawn", mult);	//电击器
 	//SetEntCount("weapon_first_aid_kit_spawn", mult);	//医疗包
 	SetEntCount("weapon_pain_pills_spawn", mult);		//止痛药
-	SetEntCount("weapon_adrenaline_spawn", mult);		//肾上腺素
+	//SetEntCount("weapon_adrenaline_spawn", mult);		//肾上腺素
 	//SetEntCount("weapon_molotov_spawn", mult);		//燃烧瓶
 	//SetEntCount("weapon_vomitjar_spawn", mult);		//胆汁罐
 	//SetEntCount("weapon_pipe_bomb_spawn", mult);		//土质炸弹
