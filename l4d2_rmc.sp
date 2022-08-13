@@ -6,11 +6,11 @@
 #define TEAM_INFECTED	3
 
 #define isValid(%1)			(%1>0 && %1<=MaxClients)
-#define isBot(%1)			(IsClientInGame(%1) && IsFakeClient(%1))
-#define isPlayer(%1)		(IsClientInGame(%1) && !IsFakeClient(%1))
-#define isValidPlayer(%1)	(isValid(%1) && isPlayer(%1))
 #define isSpectator(%1)		GetClientTeam(%1)==TEAM_SPECTATOR
 #define isSurvivor(%1)		GetClientTeam(%1)==TEAM_SURVIVOR
+#define isBot(%1)			(IsClientInGame(%1) && IsFakeClient(%1) && isSurvivor(%1))
+#define isPlayer(%1)		(IsClientInGame(%1) && !IsFakeClient(%1) && isSurvivor(%1))
+#define isValidPlayer(%1)	(isValid(%1) && isPlayer(%1))
 #define isAdmin(%1)			GetUserAdmin(%1)!=INVALID_ADMIN_ID
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
@@ -29,7 +29,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.9.1",
+	version = "1.9.2",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
