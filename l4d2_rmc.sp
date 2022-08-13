@@ -6,10 +6,10 @@
 #define TEAM_INFECTED	3
 
 #define isValid(%1)			(%1>0 && %1<=MaxClients)
+#define isBot(%1)			(IsClientInGame(%1) && IsFakeClient(%1))
+#define isPlayer(%1)		(IsClientInGame(%1) && !IsFakeClient(%1))
 #define isSpectator(%1)		GetClientTeam(%1)==TEAM_SPECTATOR
 #define isSurvivor(%1)		GetClientTeam(%1)==TEAM_SURVIVOR
-#define isBot(%1)			(IsClientInGame(%1) && IsFakeClient(%1) && isSurvivor(%1))
-#define isPlayer(%1)		(IsClientInGame(%1) && !IsFakeClient(%1) && isSurvivor(%1))
 #define isValidPlayer(%1)	(isValid(%1) && isPlayer(%1))
 #define isAdmin(%1)			GetUserAdmin(%1)!=INVALID_ADMIN_ID
 
@@ -342,7 +342,7 @@ void BotControl(int need){
 	for(int i = 1; i<=MaxClients; i++){
 		if(num<=0) return;
 		if(kick){
-			if(isBot(i)){
+			if(isBot(i) && isSurvivor(i)){
 				KickClient(i);
 				num--;
 			}
