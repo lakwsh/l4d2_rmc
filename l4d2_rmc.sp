@@ -73,7 +73,7 @@ public void OnPluginStart(){
 
 	HookEvent("round_start", OnRoundStart, EventHookMode_PostNoCopy);
 	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_PostNoCopy);
-	HookEvent("player_activate", OnActivate, EventHookMode_PostNoCopy);
+	HookEvent("player_activate", OnActivate, EventHookMode_Post);
 
 	RegConsoleCmd("sm_jg", Cmd_Join);
 	RegConsoleCmd("sm_away", Cmd_Away);
