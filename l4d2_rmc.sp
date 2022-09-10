@@ -5,13 +5,11 @@
 #define TEAM_SURVIVOR	2
 #define TEAM_INFECTED	3
 
-#define isValid(%1)			(%1>0 && %1<=MaxClients)
 #define isBot(%1)			(IsClientInGame(%1) && IsFakeClient(%1))
 #define isPlayer(%1)		(IsClientInGame(%1) && !IsFakeClient(%1))
-#define isSpectator(%1)		GetClientTeam(%1)==TEAM_SPECTATOR
-#define isSurvivor(%1)		GetClientTeam(%1)==TEAM_SURVIVOR
-#define isValidPlayer(%1)	(isValid(%1) && isPlayer(%1))
-#define isAdmin(%1)			GetUserAdmin(%1)!=INVALID_ADMIN_ID
+#define isSpectator(%1)		(GetClientTeam(%1)==TEAM_SPECTATOR)
+#define isSurvivor(%1)		(GetClientTeam(%1)==TEAM_SURVIVOR)
+#define isAdmin(%1)			(GetUserAdmin(%1)!=INVALID_ADMIN_ID)
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
 ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed;
@@ -29,7 +27,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "1.9.2",
+	version = "2.0.0",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -71,9 +69,12 @@ public void OnPluginStart(){
 
 	CloseHandle(hGameData);
 
-	HookEvent("round_start", OnRoundStart, EventHookMode_PostNoCopy);
+	HookEvent("bot_player_replace", OnTakeOver);
+	HookEvent("player_bot_replace", OnPlayerAfk);
+	HookEvent("round_end", OnRoundEnd, EventHookMode_PostNoCopy);
 	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_PostNoCopy);
 	HookEvent("player_activate", OnActivate, EventHookMode_Post);
+	HookEvent("map_transition", OnTransition, EventHookMode_PostNoCopy);
 
 	RegConsoleCmd("sm_jg", Cmd_Join);
 	RegConsoleCmd("sm_away", Cmd_Away);
@@ -107,23 +108,73 @@ public void OnMapStart(){
 	plList[0][0] = 0;	// reset
 }
 
-public void OnRoundStart(Event event, const char[] name, bool dontBroadcast){
+public void OnRoundEnd(Event event, const char[] name, bool dontBroadcast){
 	plList[0][0] = 0;	// reset
-	Reconnect = true;
 }
 
 public void OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast){
 	Reconnect = false;
 }
 
-//public void OnFinaleWin(Event event, const char[] name, bool dontBroadcast){
-//	SetConVarInt(cMax, -1);	// reset
-//}
+public void OnTransition(Event event, const char[] name, bool dontBroadcast){
+	Reconnect = true;
+}
+
+public void OnPlayerAfk(Event event, const char[] name, bool dontBroadcast){
+	if(!Enable) return;
+	int client = GetClientOfUserId(GetEventInt(event, "player", 0));
+	if(!client || !isPlayer(client) || !isSurvivor(client)) return;
+	int i = 0;
+	for(; i<sizeof(plList)-1 && plList[i][0]; i++){}	// count
+	for(int j = i; j>0; j--){
+		plList[j][0] = plList[j-1][0];	// TODO: 倒地次数
+		plList[j][1] = plList[j-1][1];	// FIXME: 倒地状态血量
+	}
+	plList[0][0] = GetSteamAccountID(client);
+	plList[0][1] = IsPlayerAlive(client)?GetClientHealth(client):0;
+	PrintToServer("[DEBUG] 保存数据 user[%d] hp[%d]", plList[0][0], plList[0][1]);
+}
+
+public void OnTakeOver(Event event, const char[] name, bool dontBroadcast){
+	if(!Enable) return;
+	int uid = GetEventInt(event, "player", 0);
+	int client = GetClientOfUserId(uid);
+	if(!client || !isSurvivor(client)) return;
+	int id = GetSteamAccountID(client);
+	if(!id){
+		ForcePlayerSuicide(client); // round_end时无效果
+		PrintToChat(client, "\x05[提示] \x04无法验证steamid,默认死亡状态");
+		return;
+	}
+	for(int j = 0; j<sizeof(plList) && plList[j][0]; j++){
+		if(plList[j][0]==id){
+			PrintToServer("[DEBUG] user[%d] hp[%d]", plList[j][0], plList[j][1]);
+			if(GetClientHealth(client)>plList[j][1]){
+				if(!plList[j][1]) ForcePlayerSuicide(client);
+				else SetEntityHealth(client, plList[j][1]);
+				PrintToChatAll("\x05[提示] \x04检测到 \x03%N \x04重复进服,恢复上次血量", client);
+			}
+			return;
+		}
+	}
+}
+
+public void OnClientDisconnect(int client){
+	if(!Enable || Reconnect) return;
+	CheckSlots();
+}
+
+public void OnClientDisconnect_Post(int client){
+	if(!Enable || GetClientCount()) return;
+	PrintToServer("[DEBUG] 重置人数设置...");
+	ServerCommand("sv_setmax 18");
+	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots);
+}
 
 public void OnActivate(Event event, const char[] name, bool dontBroadcast){
 	int uid = GetEventInt(event, "userid", 0);
 	int client = GetClientOfUserId(uid);
-	if(isValidPlayer(client)){
+	if(client && isPlayer(client)){
 		if(Enable) CheckSlots();
 		CreateTimer(2.5, JoinTeam, uid, TIMER_FLAG_NO_MAPCHANGE);
 	}
@@ -131,7 +182,7 @@ public void OnActivate(Event event, const char[] name, bool dontBroadcast){
 
 public Action JoinTeam(Handle timer, any uid){
 	int client = GetClientOfUserId(uid);
-	if(isValidPlayer(client)){
+	if(client && isPlayer(client)){
 		PrintToChat(client, "\x04[提示] \x01多人插件:\x05 %s", Enable?"开启":"关闭");
 		PrintToChat(client, "\x05[指令] \x03!setmax \x04修改人数上限, \x03!info \x04显示人数信息, \x03!zs \x04自杀");
 		PrintToChat(client, "\x05[指令] \x03!jg \x04加入生还者, \x03!away \x04加入观察者, \x03!kb \x04踢出机器人");
@@ -139,32 +190,6 @@ public Action JoinTeam(Handle timer, any uid){
 			if(GetConVarInt(cMultMed)==1) PrintToChat(client, "\x04[提示] \x01多倍药物:\x05 已开启");
 			Cmd_ShowInfo(client, 0);
 			if(isSpectator(client)) Join(client);
-			CreateTimer(1.0, UpdateHealth, uid, TIMER_FLAG_NO_MAPCHANGE);
-		}
-	}
-	return Plugin_Stop;
-}
-
-public Action UpdateHealth(Handle timer, any uid){
-	int client = GetClientOfUserId(uid);
-	if(isValidPlayer(client) && isSurvivor(client)){
-		int id = GetSteamAccountID(client);
-		if(!id){
-			ForcePlayerSuicide(client);
-			PrintToChat(client, "\x05[提示] \x04无法验证steamid,默认死亡状态");
-		}else{
-			for(int j = 0; j<sizeof(plList) && plList[j][0]; j++){
-				if(plList[j][0]==id){
-					if(GetClientHealth(client)<plList[j][1]) break;
-					switch(plList[j][1]){
-						case -1: return Plugin_Stop;
-						case 0: ForcePlayerSuicide(client);
-						default: SetEntityHealth(client, plList[j][1]);
-					}
-					PrintToChatAll("\x05[提示] \x04检测到 \x03%N \x04重复进服,恢复上次血量", client);
-					break;
-				}
-			}
 		}
 	}
 	return Plugin_Stop;
@@ -215,24 +240,6 @@ void setMax(int max){
 	PrintToChatAll("\x05[提示]\x01 已修改人数上限为%d人", max);
 }
 
-public void OnClientDisconnect(client){
-	if(Enable && !Reconnect && !IsFakeClient(client)){
-		int i = 0;
-		for(; i<sizeof(plList)-1 && plList[i][0]; i++){}	// count
-		for(int j = i; j>0; j--){
-			plList[j][0] = plList[j-1][0];
-			plList[j][1] = plList[j-1][1];
-		}
-		plList[0][0] = GetSteamAccountID(client);
-		if(IsClientInGame(client) && isSurvivor(client)){	// TODO: 倒地次数
-			if(IsPlayerAlive(client)) plList[0][1] = GetClientHealth(client);
-			else plList[0][1] = 0;
-		}
-		else plList[0][1] = -1;
-		CheckSlots();
-	}
-}
-
 void SetEntCount(const char[] ent, int count){
 	int idx = FindEntityByClassname(-1, ent);
 	while(idx != -1){
@@ -243,24 +250,24 @@ void SetEntCount(const char[] ent, int count){
 
 void SetMultMed(int slots){
 	int mult = (slots-1)/4+1;
-	//SetEntCount("weapon_defibrillator_spawn", mult);	//电击器
-	//SetEntCount("weapon_first_aid_kit_spawn", mult);	//医疗包
-	SetEntCount("weapon_pain_pills_spawn", mult);		//止痛药
-	//SetEntCount("weapon_adrenaline_spawn", mult);		//肾上腺素
-	//SetEntCount("weapon_molotov_spawn", mult);		//燃烧瓶
-	//SetEntCount("weapon_vomitjar_spawn", mult);		//胆汁罐
-	//SetEntCount("weapon_pipe_bomb_spawn", mult);		//土质炸弹
+	//SetEntCount("weapon_defibrillator_spawn", mult);	// 电击器
+	//SetEntCount("weapon_first_aid_kit_spawn", mult);	// 医疗包
+	SetEntCount("weapon_pain_pills_spawn", mult);		// 止痛药
+	//SetEntCount("weapon_adrenaline_spawn", mult);		// 肾上腺素
+	//SetEntCount("weapon_molotov_spawn", mult);		// 燃烧瓶
+	//SetEntCount("weapon_vomitjar_spawn", mult);		// 胆汁罐
+	//SetEntCount("weapon_pipe_bomb_spawn", mult);		// 土制炸弹
 }
 
 void CheckSlots(){
-	if(Reconnect) return;
-	int max = GetConVarInt(cMax), player = Count(Player);
+	int max = GetConVarInt(cMax);
 	if(Count(Survivor)>max) BotControl(max);
 
-	if(max>DefaultSlots && player>=DefaultSlots){
+	int player = Count(Player);
+	if(player>8 || (max>DefaultSlots && player>=DefaultSlots)){ // max=default=player=8
 		ServerCommand("sv_unreserved");
 		BotControl(player);
-	}else ServerCommand("sv_setmax 18");
+	}
 
 	int total = Count(Survivor);
 	if(!total) return;
@@ -286,7 +293,7 @@ public Action Cmd_SetBot(int client, int args){
 }
 
 public Action Cmd_Join(int client, int args){
-	if(isValidPlayer(client)){
+	if(client && isPlayer(client)){
 		if(isSpectator(client)) Join(client);
 		else PrintToChat(client, "\x05[加入失败] \x04请先加入观察者阵营");
 	}
@@ -294,7 +301,7 @@ public Action Cmd_Join(int client, int args){
 }
 
 public Action Cmd_Kill(int client, int args){
-	if(isValidPlayer(client)){
+	if(client && isPlayer(client)){
 		if(IsPlayerAlive(client)){
 			ForcePlayerSuicide(client);
 			char name[32];
@@ -322,7 +329,7 @@ public Action Cmd_ShowInfo(int client, int args){
 }
 
 public Action Cmd_Spawn(int client, int args){
-	if(!isValidPlayer(client) || IsPlayerAlive(client)) return Plugin_Handled;
+	if(!client || !isPlayer(client) || IsPlayerAlive(client)) return Plugin_Handled;
 	SDKCall(hRespawn, client);
 	for(int i = 1; i<=MaxClients; i++){
 		if(i!=client && isPlayer(i) && IsPlayerAlive(i)){
@@ -351,7 +358,7 @@ void BotControl(int need){
 			GetClientAbsOrigin(i, Origin);
 			do{
 				int botNo = CreateFakeClient("Bot");
-				if(!isValid(botNo)) SetFailState("Error in CreateBot");
+				if(!botNo) SetFailState("Error in CreateBot");
 				ChangeClientTeam(botNo, TEAM_SURVIVOR);
 				DispatchKeyValue(botNo, "classname", "SurvivorBot");
 				DispatchSpawn(botNo);
@@ -366,7 +373,7 @@ void BotControl(int need){
 	}
 }
 
-void TakeOverBot(client, bot){
+void TakeOverBot(int client, int bot){
 	SDKCall(hSpec, bot, client);
 	SDKCall(hSwitch, client, true);
 }
@@ -377,9 +384,6 @@ void Join(int client){
 			char classname[12];
 			GetEntityNetClass(i, classname, 12);
 			if(StrEqual(classname, "SurvivorBot")){
-				//int sid = GetClientOfUserId(GetEntProp(i, Prop_Send, "m_humanSpectatorUserID"));
-				//PrintToChatAll("sid %i client %i", sid, client);
-				//if(sid!=client) continue;
 				TakeOverBot(client, i);
 				return;
 			}
