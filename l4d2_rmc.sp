@@ -27,7 +27,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.0.0",
+	version = "2.0.1",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -165,7 +165,7 @@ public void OnClientDisconnect(int client){
 }
 
 public void OnClientDisconnect_Post(int client){
-	if(!Enable || GetClientCount()) return;
+	if(!Enable || GetClientCount(false)) return;
 	PrintToServer("[DEBUG] 重置人数设置...");
 	ServerCommand("sv_setmax 18");
 	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots);
