@@ -12,7 +12,7 @@
 #define isAdmin(%1)			(GetUserAdmin(%1)!=INVALID_ADMIN_ID)
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
-ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery;
+ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery, cUpdateMax;
 bool Enable = false, CanAway, Reconnect = false;
 int DefaultSlots, plList[32][2];
 
@@ -88,8 +88,9 @@ public void OnPluginStart(){
 	cCanAway = CreateConVar("rmc_away", "1", "允许非管理员使用!away加入观察者", 0, true, 0.0, true, 1.0);
 	cAwayMode = CreateConVar("rmc_awaymode", "0", "加入观察者类型 0=切换阵营模式 1=普通模式", 0, true, 0.0, true, 1.0);
 	cDefaultSlots = CreateConVar("rmc_defaultslots", "4", "默认玩家数", 0, true, 1.0, true, 16.0);
-	cMultMed = CreateConVar("rmc_multmed", "1", "开启多倍药物", 0, true, 0.0, true, 1.0);
-	cRecovery = CreateConVar("rmc_recovery", "1", "开启自动恢复血量", 0, true, 0.0, true, 1.0);
+	cMultMed = CreateConVar("rmc_multmed", "1", "是否开启多倍药物功能", 0, true, 0.0, true, 1.0);
+	cRecovery = CreateConVar("rmc_recovery", "1", "是否开启重复进服恢复血量功能", 0, true, 0.0, true, 1.0);
+	cUpdateMax = CreateConVar("rmc_updatemax", "1", "是否开启自动设置客户端数功能", 0, true, 0.0, true, 1.0);
 	AutoExecConfig(true, "l4d2_rmc");
 
 	SetConVarBounds(FindConVar("survivor_limit"), ConVarBound_Upper, true, 16.0);
@@ -168,7 +169,7 @@ public void OnClientDisconnect(int client){
 public void OnClientDisconnect_Post(int client){
 	if(!Enable || GetClientCount(false)) return;
 	PrintToServer("[DEBUG] 重置人数设置...");
-	ServerCommand("sv_setmax 18");
+	if(GetConVarInt(cUpdateMax)==1) ServerCommand("sv_setmax 18");
 	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots);
 }
 
@@ -273,7 +274,7 @@ void CheckSlots(){
 	int total = Count(Survivor);
 	if(!total) return;
 	if(total>4 && GetConVarInt(cMultMed)==1) SetMultMed(total);
-	if(total>8) ServerCommand("sv_setmax 31");
+	if(total>8 && GetConVarInt(cUpdateMax)==1) ServerCommand("sv_setmax 31");
 	SetConVarInt(FindConVar("survivor_limit"), max);	// 会踢出bot
 	SetConVarInt(FindConVar("z_max_player_zombies"), total);
 }
