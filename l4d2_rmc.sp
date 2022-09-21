@@ -12,7 +12,7 @@
 #define isAdmin(%1)			(GetUserAdmin(%1)!=INVALID_ADMIN_ID)
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
-ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed;
+ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery;
 bool Enable = false, CanAway, Reconnect = false;
 int DefaultSlots, plList[32][2];
 
@@ -27,7 +27,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.0.1",
+	version = "2.0.2",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -89,6 +89,7 @@ public void OnPluginStart(){
 	cAwayMode = CreateConVar("rmc_awaymode", "0", "加入观察者类型 0=切换阵营模式 1=普通模式", 0, true, 0.0, true, 1.0);
 	cDefaultSlots = CreateConVar("rmc_defaultslots", "4", "默认玩家数", 0, true, 1.0, true, 16.0);
 	cMultMed = CreateConVar("rmc_multmed", "1", "开启多倍药物", 0, true, 0.0, true, 1.0);
+	cRecovery = CreateConVar("rmc_recovery", "1", "开启自动恢复血量", 0, true, 0.0, true, 1.0);
 	AutoExecConfig(true, "l4d2_rmc");
 
 	SetConVarBounds(FindConVar("survivor_limit"), ConVarBound_Upper, true, 16.0);
@@ -121,7 +122,7 @@ public void OnTransition(Event event, const char[] name, bool dontBroadcast){
 }
 
 public void OnPlayerAfk(Event event, const char[] name, bool dontBroadcast){
-	if(!Enable) return;
+	if(!Enable || GetConVarInt(cRecovery)!=1) return;
 	int client = GetClientOfUserId(GetEventInt(event, "player", 0));
 	if(!client || !isPlayer(client) || !isSurvivor(client)) return;
 	int i = 0;
@@ -136,7 +137,7 @@ public void OnPlayerAfk(Event event, const char[] name, bool dontBroadcast){
 }
 
 public void OnTakeOver(Event event, const char[] name, bool dontBroadcast){
-	if(!Enable) return;
+	if(!Enable || GetConVarInt(cRecovery)!=1) return;
 	int uid = GetEventInt(event, "player", 0);
 	int client = GetClientOfUserId(uid);
 	if(!client || !isSurvivor(client)) return;
