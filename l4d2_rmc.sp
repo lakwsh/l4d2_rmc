@@ -14,7 +14,7 @@
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
 ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery, cUpdateMax;
 bool Enable = false, CanAway, Reconnect = false;
-int DefaultSlots, plList[32][2];
+int DefaultSlots, plList[32][3];
 
 enum Type{
 	Bot,
@@ -27,7 +27,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.0.2",
+	version = "2.0.3",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -70,10 +70,10 @@ public void OnPluginStart(){
 	CloseHandle(hGameData);
 
 	HookEvent("bot_player_replace", OnTakeOver);
-	HookEvent("player_bot_replace", OnPlayerAfk);
+	HookEvent("player_bot_replace", OnPlayerAfk, EventHookMode_Pre);
 	HookEvent("round_end", OnRoundEnd, EventHookMode_PostNoCopy);
 	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_PostNoCopy);
-	HookEvent("player_activate", OnActivate, EventHookMode_Post);
+	HookEvent("player_activate", OnActivate);
 	HookEvent("map_transition", OnTransition, EventHookMode_PostNoCopy);
 
 	RegConsoleCmd("sm_jg", Cmd_Join);
@@ -129,33 +129,45 @@ public void OnPlayerAfk(Event event, const char[] name, bool dontBroadcast){
 	int i = 0;
 	for(; i<sizeof(plList)-1 && plList[i][0]; i++){}	// count
 	for(int j = i; j>0; j--){
-		plList[j][0] = plList[j-1][0];	// TODO: 倒地次数
-		plList[j][1] = plList[j-1][1];	// FIXME: 倒地状态血量
+		plList[j][0] = plList[j-1][0];
+		plList[j][1] = plList[j-1][1];
+		plList[j][2] = plList[j-1][2];	// FIXME: 倒地状态血量
 	}
 	plList[0][0] = GetSteamAccountID(client);
-	plList[0][1] = IsPlayerAlive(client)?GetClientHealth(client):0;
-	PrintToServer("[DEBUG] 保存数据 user[%d] hp[%d]", plList[0][0], plList[0][1]);
+	if(IsPlayerAlive(client)){
+		plList[0][1] = GetClientHealth(client);
+		plList[0][2] = GetEntProp(client, Prop_Send, "m_currentReviveCount");
+	}else{
+		plList[0][1] = 0;
+		plList[0][2] = 0;
+	}
+	PrintToServer("[DEBUG] 保存数据 user[%d] hp[%d] rev[%d]", plList[0][0], plList[0][1], plList[0][2]);
 }
 
 public void OnTakeOver(Event event, const char[] name, bool dontBroadcast){
 	if(!Enable || GetConVarInt(cRecovery)!=1) return;
-	int uid = GetEventInt(event, "player", 0);
-	int client = GetClientOfUserId(uid);
+	int client = GetClientOfUserId(GetEventInt(event, "player", 0));
 	if(!client || !isSurvivor(client)) return;
 	int id = GetSteamAccountID(client);
 	if(!id){
-		ForcePlayerSuicide(client); // round_end时无效果
+		ForcePlayerSuicide(client);
 		PrintToChat(client, "\x05[提示] \x04无法验证steamid,默认死亡状态");
 		return;
 	}
-	for(int j = 0; j<sizeof(plList) && plList[j][0]; j++){
+	for(int j = 0; j<sizeof(plList) && plList[j][0]; j++){ // 注意round_end
 		if(plList[j][0]==id){
-			PrintToServer("[DEBUG] user[%d] hp[%d]", plList[j][0], plList[j][1]);
+			PrintToServer("[DEBUG] user[%d] hp[%d] rev[%d]", plList[j][0], plList[j][1], plList[j][2]);
+			int flag = 0;
 			if(GetClientHealth(client)>plList[j][1]){
 				if(!plList[j][1]) ForcePlayerSuicide(client);
 				else SetEntityHealth(client, plList[j][1]);
-				PrintToChatAll("\x05[提示] \x04检测到 \x03%N \x04重复进服,恢复上次血量", client);
+				flag |= 1;
 			}
+			if(GetEntProp(client, Prop_Send, "m_currentReviveCount")<plList[j][2]){
+				SetEntProp(client, Prop_Send, "m_currentReviveCount", plList[j][2]);
+				flag |= 2;
+			}
+			PrintToChatAll("\x05[提示] \x04检测到 \x03%N \x04重复进服%s%s%s%s", client, flag?", ":"", flag&1?"恢复血量":"", flag==3?"及":(flag&2?"恢复":""), flag&2?"倒地次数":"");
 			return;
 		}
 	}
