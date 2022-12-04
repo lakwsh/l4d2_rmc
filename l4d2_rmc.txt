@@ -28,6 +28,29 @@
 				"linux"		"@_ZN13CTerrorPlayer18GoAwayFromKeyboardEv"
 				"windows"	"******\x53\x56\x57\x8B*\x8B*\x8B\x90****\x8B"
 			}
+			"HibernationUpdate"
+			{
+				"library"	"server"
+				"linux"		"@_ZN14CServerGameDLL23ServerHibernationUpdateEb"
+				"windows"	"\x55\x8B\xEC\x8A*\x08\x83\xEC***\x33"
+			}
+		}
+		"Functions"
+		{
+			"HibernationUpdate"
+			{
+				"signature"		"HibernationUpdate"
+				"callconv"		"thiscall"
+				"return"		"void"
+				"this"			"ignore"
+				"arguments"
+				{
+					"bHibernating"
+					{
+						"type"	"bool"
+					}
+				}
+			}
 		}
     }
 }

@@ -1,5 +1,6 @@
 #include <sourcemod>
 #include <sdktools>
+#include <dhooks>
 
 #define TEAM_SPECTATOR	1
 #define TEAM_SURVIVOR	2
@@ -12,8 +13,8 @@
 #define isAdmin(%1)			(GetUserAdmin(%1)!=INVALID_ADMIN_ID)
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
-ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery, cUpdateMax;
-bool Enable = false, CanAway, Reconnect = false;
+ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery, cUpdateMax, cMultHp, cTankHp;
+bool Enable = false, CanAway;
 int DefaultSlots, plList[32][3];
 
 enum Type{
@@ -27,7 +28,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.0.3",
+	version = "2.0.6",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -67,14 +68,15 @@ public void OnPluginStart(){
 	hGoAway = EndPrepSDKCall();
 	if(hGoAway==INVALID_HANDLE) SetFailState("GoAwayFromKeyboard Signature broken.");
 
+	DHookSetup hDetour = DHookCreateFromConf(hGameData, "HibernationUpdate");
+	if(!hDetour || !DHookEnableDetour(hDetour, true, OnHibernationUpdate)) SetFailState("Failed to hook HibernationUpdate");
+
 	CloseHandle(hGameData);
 
 	HookEvent("bot_player_replace", OnTakeOver);
 	HookEvent("player_bot_replace", OnPlayerAfk, EventHookMode_Pre);
 	HookEvent("round_end", OnRoundEnd, EventHookMode_PostNoCopy);
-	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_PostNoCopy);
 	HookEvent("player_activate", OnActivate);
-	HookEvent("map_transition", OnTransition, EventHookMode_PostNoCopy);
 
 	RegConsoleCmd("sm_jg", Cmd_Join);
 	RegConsoleCmd("sm_away", Cmd_Away);
@@ -89,12 +91,14 @@ public void OnPluginStart(){
 	cAwayMode = CreateConVar("rmc_awaymode", "0", "加入观察者类型 0=切换阵营模式 1=普通模式", 0, true, 0.0, true, 1.0);
 	cDefaultSlots = CreateConVar("rmc_defaultslots", "4", "默认玩家数", 0, true, 1.0, true, 16.0);
 	cMultMed = CreateConVar("rmc_multmed", "1", "是否开启多倍药物功能", 0, true, 0.0, true, 1.0);
+	cMultHp = CreateConVar("rmc_multhp", "1", "是否开启坦克多倍血量", 0, true, 0.0, true, 1.0);
 	cRecovery = CreateConVar("rmc_recovery", "1", "是否开启重复进服恢复血量功能", 0, true, 0.0, true, 1.0);
 	cUpdateMax = CreateConVar("rmc_updatemax", "1", "是否开启自动设置客户端数功能", 0, true, 0.0, true, 1.0);
 	AutoExecConfig(true, "l4d2_rmc");
 
 	SetConVarBounds(FindConVar("survivor_limit"), ConVarBound_Upper, true, 16.0);
 	SetConVarBounds(FindConVar("z_max_player_zombies"), ConVarBound_Upper, true, 16.0);
+	cTankHp = FindConVar("z_tank_health");
 
 	DefaultSlots = GetConVarInt(cDefaultSlots);
 	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots);
@@ -114,16 +118,18 @@ public void OnRoundEnd(Event event, const char[] name, bool dontBroadcast){
 	plList[0][0] = 0;	// reset
 }
 
-public void OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast){
-	Reconnect = false;
-}
-
-public void OnTransition(Event event, const char[] name, bool dontBroadcast){
-	Reconnect = true;
+public MRESReturn OnHibernationUpdate(DHookParam hParams){
+	if(!Enable || !DHookGetParam(hParams, 1)) return MRES_Ignored;
+	PrintToServer("[DEBUG] 重置人数设置...");
+	if(GetConVarInt(cUpdateMax)==1) ServerCommand("sv_setmax 18");
+	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots);
+	return MRES_Handled;
 }
 
 public void OnPlayerAfk(Event event, const char[] name, bool dontBroadcast){
-	if(!Enable || GetConVarInt(cRecovery)!=1) return;
+	if(!Enable) return;
+	CheckSlots();
+	if(GetConVarInt(cRecovery)!=1) return;
 	int client = GetClientOfUserId(GetEventInt(event, "player", 0));
 	if(!client || !isPlayer(client) || !isSurvivor(client)) return;
 	int i = 0;
@@ -167,22 +173,10 @@ public void OnTakeOver(Event event, const char[] name, bool dontBroadcast){
 				SetEntProp(client, Prop_Send, "m_currentReviveCount", plList[j][2]);
 				flag |= 2;
 			}
-			PrintToChatAll("\x05[提示] \x04检测到 \x03%N \x04重复进服%s%s%s%s", client, flag?", ":"", flag&1?"恢复血量":"", flag==3?"及":(flag&2?"恢复":""), flag&2?"倒地次数":"");
+			if(flag) PrintToChatAll("\x05[提示] \x03%N \x04重复接管Bot, %s%s%s", client, flag&1?"恢复血量":"", flag==3?"及":(flag&2?"恢复":""), flag&2?"倒地次数":"");
 			return;
 		}
 	}
-}
-
-public void OnClientDisconnect(int client){
-	if(!Enable || Reconnect) return;
-	CheckSlots();
-}
-
-public void OnClientDisconnect_Post(int client){
-	if(!Enable || GetClientCount(false)) return;
-	PrintToServer("[DEBUG] 重置人数设置...");
-	if(GetConVarInt(cUpdateMax)==1) ServerCommand("sv_setmax 18");
-	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots);
 }
 
 public void OnActivate(Event event, const char[] name, bool dontBroadcast){
@@ -201,7 +195,7 @@ public Action JoinTeam(Handle timer, any uid){
 		PrintToChat(client, "\x05[指令] \x03!setmax \x04修改人数上限, \x03!info \x04显示人数信息, \x03!zs \x04自杀");
 		PrintToChat(client, "\x05[指令] \x03!jg \x04加入生还者, \x03!away \x04加入观察者, \x03!kb \x04踢出机器人");
 		if(Enable){
-			if(GetConVarInt(cMultMed)==1) PrintToChat(client, "\x04[提示] \x01多倍药物:\x05 已开启");
+			PrintToChat(client, "\x04[提示] \x01多倍药物:\x05 %s, \x01Tank多倍血量:\x05 %s", GetConVarInt(cMultMed)?"已开启":"已关闭", GetConVarInt(cMultHp)?"已开启":"已关闭");
 			Cmd_ShowInfo(client, 0);
 			if(isSpectator(client)) Join(client);
 		}
@@ -285,7 +279,16 @@ void CheckSlots(){
 
 	int total = Count(Survivor);
 	if(!total) return;
-	if(total>4 && GetConVarInt(cMultMed)==1) SetMultMed(total);
+	if(total>4){
+		if(GetConVarInt(cMultMed)==1) SetMultMed(total);
+		if(GetConVarInt(cMultHp)==1){
+			int hp = total*1000;
+			int flag = GetCommandFlags("z_tank_health");
+			SetCommandFlags("z_tank_health", flag&~FCVAR_CHEAT);
+			SetConVarInt(cTankHp, hp);
+			SetCommandFlags("z_tank_health", flag);
+		}
+	}
 	if(total>8 && GetConVarInt(cUpdateMax)==1) ServerCommand("sv_setmax 31");
 	SetConVarInt(FindConVar("survivor_limit"), max);	// 会踢出bot
 	SetConVarInt(FindConVar("z_max_player_zombies"), total);
@@ -387,9 +390,9 @@ void BotControl(int need){
 	}
 }
 
-void TakeOverBot(int client, int bot){
+bool TakeOverBot(int client, int bot){
 	SDKCall(hSpec, bot, client);
-	SDKCall(hSwitch, client, true);
+	return SDKCall(hSwitch, client, true);
 }
 
 void Join(int client){
@@ -397,10 +400,7 @@ void Join(int client){
 		if(isBot(i) && IsPlayerAlive(i)){
 			char classname[12];
 			GetEntityNetClass(i, classname, 12);
-			if(StrEqual(classname, "SurvivorBot")){
-				TakeOverBot(client, i);
-				return;
-			}
+			if(StrEqual(classname, "SurvivorBot") && TakeOverBot(client, i)) return;
 		}
 	}
 	PrintToChat(client, "\x05[加入失败] \x04没有可接管的Bot");
@@ -409,7 +409,7 @@ void Join(int client){
 int Count(Type fiter){
 	int num = 0;
 	for(int i = 1; i<=MaxClients; i++){
-		if(!IsClientInGame(i)) continue;
+		if(!IsClientInGame(i) || IsClientInKickQueue(i)) continue;
 		int t = GetClientTeam(i);
 		switch(fiter){
 			case Bot:
