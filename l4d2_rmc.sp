@@ -28,7 +28,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.0.6",
+	version = "2.0.7",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -272,10 +272,7 @@ void CheckSlots(){
 	if(Count(Survivor)>max) BotControl(max);
 
 	int player = Count(Player);
-	if(player>8 || (max>DefaultSlots && player>=DefaultSlots)){ // max=default=player=8
-		ServerCommand("sv_unreserved");
-		BotControl(player);
-	}
+	if(max>DefaultSlots && player>=DefaultSlots) BotControl(player);
 
 	int total = Count(Survivor);
 	if(!total) return;
@@ -285,7 +282,7 @@ void CheckSlots(){
 			int hp = total*1000;
 			int flag = GetCommandFlags("z_tank_health");
 			SetCommandFlags("z_tank_health", flag&~FCVAR_CHEAT);
-			SetConVarInt(cTankHp, hp);
+			SetConVarInt(cTankHp, hp); // 无需处理游戏难度
 			SetCommandFlags("z_tank_health", flag);
 		}
 	}
