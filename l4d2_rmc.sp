@@ -28,7 +28,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.0.7",
+	version = "2.0.8",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -272,7 +272,10 @@ void CheckSlots(){
 	if(Count(Survivor)>max) BotControl(max);
 
 	int player = Count(Player);
-	if(max>DefaultSlots && player>=DefaultSlots) BotControl(player);
+	if(max>DefaultSlots && player>=DefaultSlots){
+		ServerCommand("sv_cookie 0");
+		BotControl(player);
+	}
 
 	int total = Count(Survivor);
 	if(!total) return;
