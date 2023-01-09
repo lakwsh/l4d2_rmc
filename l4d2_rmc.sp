@@ -18,9 +18,7 @@ bool Enable = false, CanAway;
 int DefaultSlots, plList[32][3];
 
 enum Type{
-	Bot,
 	Survivor,
-	Spectator,
 	Player
 };
 
@@ -28,7 +26,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.0.8",
+	version = "2.1.0",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -81,11 +79,8 @@ public void OnPluginStart(){
 	RegConsoleCmd("sm_jg", Cmd_Join);
 	RegConsoleCmd("sm_away", Cmd_Away);
 	RegConsoleCmd("sm_zs", Cmd_Kill);
-	RegConsoleCmd("sm_info", Cmd_ShowInfo);
 	RegConsoleCmd("sm_setmax", Cmd_SetMax);
 	RegAdminCmd("sm_fh", Cmd_Spawn, ADMFLAG_CHEATS, "复活");
-	RegAdminCmd("sm_kb", Cmd_KickBot, ADMFLAG_KICK, "强制踢出机器人");
-	RegAdminCmd("sm_sb", Cmd_SetBot, ADMFLAG_KICK, "设置生还者人数");
 
 	cCanAway = CreateConVar("rmc_away", "1", "允许非管理员使用!away加入观察者", 0, true, 0.0, true, 1.0);
 	cAwayMode = CreateConVar("rmc_awaymode", "0", "加入观察者类型 0=切换阵营模式 1=普通模式", 0, true, 0.0, true, 1.0);
@@ -128,10 +123,10 @@ public MRESReturn OnHibernationUpdate(DHookParam hParams){
 
 public void OnPlayerAfk(Event event, const char[] name, bool dontBroadcast){
 	if(!Enable) return;
+	int client = GetClientOfUserId(GetEventInt(event, "player", 0));
+	if(!client || !isPlayer(client) || !isSurvivor(client)) return; // 创建bot会触发
 	CheckSlots();
 	if(GetConVarInt(cRecovery)!=1) return;
-	int client = GetClientOfUserId(GetEventInt(event, "player", 0));
-	if(!client || !isPlayer(client) || !isSurvivor(client)) return;
 	int i = 0;
 	for(; i<sizeof(plList)-1 && plList[i][0]; i++){}	// count
 	for(int j = i; j>0; j--){
@@ -192,11 +187,10 @@ public Action JoinTeam(Handle timer, any uid){
 	int client = GetClientOfUserId(uid);
 	if(client && isPlayer(client)){
 		PrintToChat(client, "\x04[提示] \x01多人插件:\x05 %s", Enable?"开启":"关闭");
-		PrintToChat(client, "\x05[指令] \x03!setmax \x04修改人数上限, \x03!info \x04显示人数信息, \x03!zs \x04自杀");
-		PrintToChat(client, "\x05[指令] \x03!jg \x04加入生还者, \x03!away \x04加入观察者, \x03!kb \x04踢出机器人");
+		PrintToChat(client, "\x05[指令] \x03!setmax <人数> \x04修改人数上限, \x03!zs \x04自杀");
+		PrintToChat(client, "\x05[指令] \x03!jg \x04加入生还者, \x03!away \x04加入观察者");
 		if(Enable){
 			PrintToChat(client, "\x04[提示] \x01多倍药物:\x05 %s, \x01Tank多倍血量:\x05 %s", GetConVarInt(cMultMed)?"已开启":"已关闭", GetConVarInt(cMultHp)?"已开启":"已关闭");
-			Cmd_ShowInfo(client, 0);
 			if(isSpectator(client)) Join(client);
 		}
 	}
@@ -244,7 +238,8 @@ public int voteCallback(Menu menu, MenuAction action, int param1, int param2){
 
 void setMax(int max){
 	SetConVarInt(cMax, max==4?-1:max);
-	if(max!=4) CheckSlots();	// unreserved
+	if(Count(Player)>=DefaultSlots) ServerCommand("sv_cookie 0");
+	CheckSlots();
 	PrintToChatAll("\x05[提示]\x01 已修改人数上限为%d人", max);
 }
 
@@ -267,18 +262,28 @@ void SetMultMed(int slots){
 	//SetEntCount("weapon_pipe_bomb_spawn", mult);		// 土制炸弹
 }
 
+// 规则1: 设=实						=> 不处理
+// 规则2: 实>设						=> 设
+// 规则3: 设>def && 设>实 && def>实	=> def
+// 规则4: 设>def && 设>实 && 实>def	=> 实
+// 规则5: def>设					=> 设
 void CheckSlots(){
-	int max = GetConVarInt(cMax);
-	if(Count(Survivor)>max) BotControl(max);
-
-	int player = Count(Player);
-	if(max>DefaultSlots && player>=DefaultSlots){
-		ServerCommand("sv_cookie 0");
-		BotControl(player);
+	int max = GetConVarInt(cMax), now = Count(Survivor);
+	if(max<1) max = DefaultSlots;
+	if(now!=max){	// 1
+		int tmp = max;
+		if(DefaultSlots>max){
+			// 5
+		}else if(now>max){
+			// 2
+		}else{
+			if(DefaultSlots>now) tmp = DefaultSlots;	// 3
+			else tmp = now;	// 4
+		}
+		BotControl(tmp);
 	}
 
 	int total = Count(Survivor);
-	if(!total) return;
 	if(total>4){
 		if(GetConVarInt(cMultMed)==1) SetMultMed(total);
 		if(GetConVarInt(cMultHp)==1){
@@ -290,23 +295,9 @@ void CheckSlots(){
 		}
 	}
 	if(total>8 && GetConVarInt(cUpdateMax)==1) ServerCommand("sv_setmax 31");
-	SetConVarInt(FindConVar("survivor_limit"), max);	// 会踢出bot
+	int pl = Count(Player);
+	SetConVarInt(FindConVar("survivor_limit"), max>pl?max:pl);	// 会踢出bot
 	SetConVarInt(FindConVar("z_max_player_zombies"), total);
-}
-
-public Action Cmd_KickBot(int client, int args){
-	BotControl(0);
-	PrintToChatAll("\x05[提示]\x01 已踢出所有机器人");
-	return Plugin_Handled;
-}
-
-public Action Cmd_SetBot(int client, int args){
-	if(args==1){
-		char tmp[3];
-		GetCmdArg(1, tmp, sizeof(tmp));
-		BotControl(StringToInt(tmp));
-	}
-	return Plugin_Handled;
 }
 
 public Action Cmd_Join(int client, int args){
@@ -337,11 +328,6 @@ public Action Cmd_Away(int client, int args){
 	}
 	if(GetConVarBool(cAwayMode)) SDKCall(hGoAway, client);
 	else ChangeClientTeam(client, TEAM_SPECTATOR);
-	return Plugin_Handled;
-}
-
-public Action Cmd_ShowInfo(int client, int args){
-	PrintToChat(client, "\x05[提示] \x03幸存者\x04[%i] \x03观察者\x04[%i] \x03Bot\x04[%i] \x03玩家\x04[%i] ", Count(Survivor), Count(Spectator), Count(Bot), Count(Player));
 	return Plugin_Handled;
 }
 
@@ -412,12 +398,8 @@ int Count(Type fiter){
 		if(!IsClientInGame(i) || IsClientInKickQueue(i)) continue;
 		int t = GetClientTeam(i);
 		switch(fiter){
-			case Bot:
-				if(t==TEAM_SURVIVOR && IsFakeClient(i)) num++;
 			case Survivor:
 				if(t==TEAM_SURVIVOR) num++;
-			case Spectator:
-				if(t==TEAM_SPECTATOR) num++;
 			case Player:
 				if(!IsFakeClient(i)) num++;
 		}
