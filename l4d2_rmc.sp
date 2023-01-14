@@ -10,7 +10,7 @@
 #define isPlayer(%1)		(IsClientInGame(%1) && !IsFakeClient(%1))
 #define isSpectator(%1)		(GetClientTeam(%1)==TEAM_SPECTATOR)
 #define isSurvivor(%1)		(GetClientTeam(%1)==TEAM_SURVIVOR)
-#define isAdmin(%1)			(GetUserAdmin(%1)!=INVALID_ADMIN_ID)
+#define isAdmin(%1)			GetAdminFlag(GetUserAdmin(%1), Admin_Generic)
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
 ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery, cUpdateMax, cMultHp, cTankHp;
@@ -26,7 +26,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.1.0",
+	version = "2.1.1",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -125,7 +125,7 @@ public void OnPlayerAfk(Event event, const char[] name, bool dontBroadcast){
 	if(!Enable) return;
 	int client = GetClientOfUserId(GetEventInt(event, "player", 0));
 	if(!client || !isPlayer(client) || !isSurvivor(client)) return; // 创建bot会触发
-	CheckSlots();
+	CheckSlots(true);
 	if(GetConVarInt(cRecovery)!=1) return;
 	int i = 0;
 	for(; i<sizeof(plList)-1 && plList[i][0]; i++){}	// count
@@ -267,23 +267,22 @@ void SetMultMed(int slots){
 // 规则3: 设>def && 设>实 && def>实	=> def
 // 规则4: 设>def && 设>实 && 实>def	=> 实
 // 规则5: def>设					=> 设
-void CheckSlots(){
+void CheckSlots(bool afk = false){
 	int max = GetConVarInt(cMax), now = Count(Survivor);
 	if(max<1) max = DefaultSlots;
+	if(afk) now--;
+	int total = max;
 	if(now!=max){	// 1
-		int tmp = max;
-		if(DefaultSlots>max){
+		if(DefaultSlots>=max){
 			// 5
 		}else if(now>max){
 			// 2
 		}else{
-			if(DefaultSlots>now) tmp = DefaultSlots;	// 3
-			else tmp = now;	// 4
+			if(DefaultSlots>now) total = DefaultSlots;	// 3
+			else total = now;	// 4
 		}
-		BotControl(tmp);
+		BotControl(total, afk);
 	}
-
-	int total = Count(Survivor);
 	if(total>4){
 		if(GetConVarInt(cMultMed)==1) SetMultMed(total);
 		if(GetConVarInt(cMultHp)==1){
@@ -345,8 +344,9 @@ public Action Cmd_Spawn(int client, int args){
 	return Plugin_Handled;
 }
 
-void BotControl(int need){
+void BotControl(int need, bool afk){
 	int total = Count(Survivor);
+	if(afk) total--;
 	bool kick = total>need;
 	int num = kick?(total-need):(need-total);
 	for(int i = 1; i<=MaxClients; i++){
