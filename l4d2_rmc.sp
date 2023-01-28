@@ -19,14 +19,15 @@ int DefaultSlots, plList[32][3];
 
 enum Type{
 	Survivor,
-	Player
+	Player,
+	Bot
 };
 
 public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.1.1",
+	version = "2.1.2",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -75,11 +76,13 @@ public void OnPluginStart(){
 	HookEvent("player_bot_replace", OnPlayerAfk, EventHookMode_Pre);
 	HookEvent("round_end", OnRoundEnd, EventHookMode_PostNoCopy);
 	HookEvent("player_activate", OnActivate);
+	HookEvent("player_disconnect", OnPlayerDisconnect, EventHookMode_Pre);
 
 	RegConsoleCmd("sm_jg", Cmd_Join);
 	RegConsoleCmd("sm_away", Cmd_Away);
 	RegConsoleCmd("sm_zs", Cmd_Kill);
 	RegConsoleCmd("sm_setmax", Cmd_SetMax);
+	RegConsoleCmd("sm_info", Cmd_Info);
 	RegAdminCmd("sm_fh", Cmd_Spawn, ADMFLAG_CHEATS, "复活");
 
 	cCanAway = CreateConVar("rmc_away", "1", "允许非管理员使用!away加入观察者", 0, true, 0.0, true, 1.0);
@@ -118,15 +121,14 @@ public MRESReturn OnHibernationUpdate(DHookParam hParams){
 	PrintToServer("[DEBUG] 重置人数设置...");
 	if(GetConVarInt(cUpdateMax)==1) ServerCommand("sv_setmax 18");
 	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots);
+	ResetConVar(cTankHp, true);
 	return MRES_Handled;
 }
 
 public void OnPlayerAfk(Event event, const char[] name, bool dontBroadcast){
-	if(!Enable) return;
+	if(!Enable || GetConVarInt(cRecovery)!=1) return;
 	int client = GetClientOfUserId(GetEventInt(event, "player", 0));
 	if(!client || !isPlayer(client) || !isSurvivor(client)) return; // 创建bot会触发
-	CheckSlots(true);
-	if(GetConVarInt(cRecovery)!=1) return;
 	int i = 0;
 	for(; i<sizeof(plList)-1 && plList[i][0]; i++){}	// count
 	for(int j = i; j>0; j--){
@@ -172,6 +174,12 @@ public void OnTakeOver(Event event, const char[] name, bool dontBroadcast){
 			return;
 		}
 	}
+}
+
+public void OnPlayerDisconnect(Event event, const char[] name, bool dontBroadcast){
+	if(!Enable) return;
+	int client = GetClientOfUserId(GetEventInt(event, "userid", 0));
+	if(client && isPlayer(client)) CheckSlots(true);
 }
 
 public void OnActivate(Event event, const char[] name, bool dontBroadcast){
@@ -221,6 +229,11 @@ public Action Cmd_SetMax(int client, int args){
 	return Plugin_Handled;
 }
 
+public Action Cmd_Info(int client, int args){
+	ReplyToCommand(client, "Player=%d Bot=%d Survivor=%d", Count(Player), Count(Bot), Count(Survivor));
+	return Plugin_Handled;
+}
+
 public int voteCallback(Menu menu, MenuAction action, int param1, int param2){
 	if(action==MenuAction_VoteEnd){
 		int votes, totalVotes;
@@ -267,12 +280,13 @@ void SetMultMed(int slots){
 // 规则3: 设>def && 设>实 && def>实	=> def
 // 规则4: 设>def && 设>实 && 实>def	=> 实
 // 规则5: def>设					=> 设
-void CheckSlots(bool afk = false){
-	int max = GetConVarInt(cMax), now = Count(Survivor);
+void CheckSlots(bool disconnect = false){
+	int max = GetConVarInt(cMax);
 	if(max<1) max = DefaultSlots;
-	if(afk) now--;
 	int total = max;
-	if(now!=max){	// 1
+	if(Count(Survivor)!=max){	// 1
+		int now = Count(Player);
+		if(disconnect) now--;
 		if(DefaultSlots>=max){
 			// 5
 		}else if(now>max){
@@ -281,7 +295,7 @@ void CheckSlots(bool afk = false){
 			if(DefaultSlots>now) total = DefaultSlots;	// 3
 			else total = now;	// 4
 		}
-		BotControl(total, afk);
+		BotControl(total);
 	}
 	if(total>4){
 		if(GetConVarInt(cMultMed)==1) SetMultMed(total);
@@ -296,7 +310,7 @@ void CheckSlots(bool afk = false){
 	if(total>8 && GetConVarInt(cUpdateMax)==1) ServerCommand("sv_setmax 31");
 	int pl = Count(Player);
 	SetConVarInt(FindConVar("survivor_limit"), max>pl?max:pl);	// 会踢出bot
-	SetConVarInt(FindConVar("z_max_player_zombies"), total);
+	SetConVarInt(FindConVar("z_max_player_zombies"), total); // 对抗-特感人数
 }
 
 public Action Cmd_Join(int client, int args){
@@ -344,9 +358,10 @@ public Action Cmd_Spawn(int client, int args){
 	return Plugin_Handled;
 }
 
-void BotControl(int need, bool afk){
+void BotControl(int need){
 	int total = Count(Survivor);
-	if(afk) total--;
+	if(!need || need==total) return;
+	PrintToServer("[DEBUG] need=%d survivor=%d", need, total);
 	bool kick = total>need;
 	int num = kick?(total-need):(need-total);
 	for(int i = 1; i<=MaxClients; i++){
@@ -402,6 +417,8 @@ int Count(Type fiter){
 				if(t==TEAM_SURVIVOR) num++;
 			case Player:
 				if(!IsFakeClient(i)) num++;
+			case Bot:
+				if(IsFakeClient(i) && t==TEAM_SURVIVOR) num++;
 		}
 	}
 	return num;
