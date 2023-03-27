@@ -14,10 +14,10 @@
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
 ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery, cUpdateMax, cMultHp, cTankHp;
-bool Enable = false, CanAway;
-int DefaultSlots, plList[32][3];
+bool Enable = false, CanAway, AdvSp = false;
+int DefaultSlots, plList[32][3]; // ArrayStack
 
-enum Type{
+enum Fiter_Type{
 	Survivor,
 	Player,
 	Bot
@@ -27,7 +27,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.1.2",
+	version = "2.1.3",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -67,8 +67,10 @@ public void OnPluginStart(){
 	hGoAway = EndPrepSDKCall();
 	if(hGoAway==INVALID_HANDLE) SetFailState("GoAwayFromKeyboard Signature broken.");
 
-	DHookSetup hDetour = DHookCreateFromConf(hGameData, "HibernationUpdate");
-	if(!hDetour || !DHookEnableDetour(hDetour, true, OnHibernationUpdate)) SetFailState("Failed to hook HibernationUpdate");
+	DHookSetup hDetour1 = DHookCreateFromConf(hGameData, "HibernationUpdate");
+	if(!hDetour1 || !DHookEnableDetour(hDetour1, true, OnHibernationUpdate)) SetFailState("Failed to hook HibernationUpdate");
+	DHookSetup hDetour2 = DHookCreateFromConf(hGameData, "ShouldAdvanceOnSurvivors");
+	if(!hDetour2 || !DHookEnableDetour(hDetour2, true, ShouldAdvanceOnSurvivors)) SetFailState("Failed to hook ShouldAdvanceOnSurvivors");
 
 	CloseHandle(hGameData);
 
@@ -82,6 +84,7 @@ public void OnPluginStart(){
 	RegConsoleCmd("sm_away", Cmd_Away);
 	RegConsoleCmd("sm_zs", Cmd_Kill);
 	RegConsoleCmd("sm_setmax", Cmd_SetMax);
+	RegConsoleCmd("sm_advsp", Cmd_AdvSp);
 	RegConsoleCmd("sm_info", Cmd_Info);
 	RegAdminCmd("sm_fh", Cmd_Spawn, ADMFLAG_CHEATS, "复活");
 
@@ -117,12 +120,19 @@ public void OnRoundEnd(Event event, const char[] name, bool dontBroadcast){
 }
 
 public MRESReturn OnHibernationUpdate(DHookParam hParams){
+	AdvSp = false;
 	if(!Enable || !DHookGetParam(hParams, 1)) return MRES_Ignored;
 	PrintToServer("[DEBUG] 重置人数设置...");
 	if(GetConVarInt(cUpdateMax)==1) ServerCommand("sv_setmax 18");
 	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots);
 	ResetConVar(cTankHp, true);
 	return MRES_Handled;
+}
+
+public MRESReturn ShouldAdvanceOnSurvivors(DHookReturn hReturn){
+	if(!AdvSp) return MRES_Ignored;
+	DHookSetReturn(hReturn, true);
+	return MRES_Supercede;
 }
 
 public void OnPlayerAfk(Event event, const char[] name, bool dontBroadcast){
@@ -195,8 +205,8 @@ public Action JoinTeam(Handle timer, any uid){
 	int client = GetClientOfUserId(uid);
 	if(client && isPlayer(client)){
 		PrintToChat(client, "\x04[提示] \x01多人插件:\x05 %s", Enable?"开启":"关闭");
-		PrintToChat(client, "\x05[指令] \x03!setmax <人数> \x04修改人数上限, \x03!zs \x04自杀");
-		PrintToChat(client, "\x05[指令] \x03!jg \x04加入生还者, \x03!away \x04加入观察者");
+		PrintToChat(client, "\x05[指令] \x03!setmax <人数> \x04修改人数上限, \x03!advsp \x04开启高级特感");
+		PrintToChat(client, "\x05[指令] \x03!jg \x04加入生还者, \x03!away \x04加入观察者, \x03!zs \x04自杀");
 		if(Enable){
 			PrintToChat(client, "\x04[提示] \x01多倍药物:\x05 %s, \x01Tank多倍血量:\x05 %s", GetConVarInt(cMultMed)?"已开启":"已关闭", GetConVarInt(cMultHp)?"已开启":"已关闭");
 			if(isSpectator(client)) Join(client);
@@ -212,16 +222,16 @@ public Action Cmd_SetMax(int client, int args){
 		int max = StringToInt(tmp);
 		if(max<1 || max>16) max = DefaultSlots;
 		if(!client || isAdmin(client)){	// console
-			setMax(max);
+			SetMax(max);
 		}else{
 			if(IsVoteInProgress()){
-				PrintToChatAll("\x05[提示]\x01 投票进行中,无法修改人数上限");
+				PrintToChatAll("\x05[提示]\x01 投票进行中");
 				return Plugin_Handled;
 			}
 			Menu vote = new Menu(voteCallback, MenuAction_VoteEnd);
 			vote.SetTitle("修改人数上限为%d", max);
 			vote.AddItem(tmp, "Yes");	// 0
-			vote.AddItem("###RMC_NO###", "No");	// 1
+			vote.AddItem("###MAX_NO###", "No");	// 1
 			vote.ExitButton = false;
 			vote.DisplayVoteToAll(20);
 		}
@@ -229,31 +239,64 @@ public Action Cmd_SetMax(int client, int args){
 	return Plugin_Handled;
 }
 
-public Action Cmd_Info(int client, int args){
-	ReplyToCommand(client, "Player=%d Bot=%d Survivor=%d", Count(Player), Count(Bot), Count(Survivor));
+public Action Cmd_AdvSp(int client, int args){
+	if(!client || isAdmin(client)){	// console
+		SetAdvSp();
+	}else{
+		if(IsVoteInProgress()){
+			PrintToChatAll("\x05[提示]\x01 投票进行中");
+			return Plugin_Handled;
+		}
+		Menu vote = new Menu(voteCallback, MenuAction_VoteEnd);
+		vote.SetTitle("%s高级特感", AdvSp?"关闭":"开启");
+		vote.AddItem(AdvSp?"0":"1", "Yes");	// 0
+		vote.AddItem("###ADV_NO###", "No");	// 1
+		vote.ExitButton = false;
+		vote.DisplayVoteToAll(20);
+	}
 	return Plugin_Handled;
 }
 
 public int voteCallback(Menu menu, MenuAction action, int param1, int param2){
 	if(action==MenuAction_VoteEnd){
+		char tmp[13], display[64];
+		menu.GetItem(1, tmp, sizeof(tmp), _, display, sizeof(display));
 		int votes, totalVotes;
 		GetMenuVoteInfo(param2, votes, totalVotes);
-		if(param1==1 || votes!=totalVotes){
-			PrintToChatAll("\x05[提示]\x01 投票未全票通过,人数上限未修改");
-		}else{
-			char item[PLATFORM_MAX_PATH], display[64];
-			menu.GetItem(0, item, sizeof(item), _, display, sizeof(display));
-			setMax(StringToInt(item));
+		if(StrEqual(tmp, "###MAX_NO###")){
+			if(param1==1 || votes!=totalVotes){
+				PrintToChatAll("\x05[提示]\x01 投票未全票通过,人数上限未修改");
+			}else{
+				menu.GetItem(0, tmp, sizeof(tmp), _, display, sizeof(display));
+				SetMax(StringToInt(tmp));
+			}
+		}else if(StrEqual(tmp, "###ADV_NO###")){
+			if(param1==1 || votes!=totalVotes){
+				menu.GetItem(0, tmp, sizeof(tmp), _, display, sizeof(display));
+				PrintToChatAll("\x05[提示]\x01 投票未全票通过,未%s高级特感", StringToInt(tmp)?"开启":"关闭");
+			}else{
+				SetAdvSp();
+			}
 		}
 	}
 	return 0;
 }
 
-void setMax(int max){
+public Action Cmd_Info(int client, int args){
+	ReplyToCommand(client, "Player=%d Bot=%d Survivor=%d", Count(Player), Count(Bot), Count(Survivor));
+	return Plugin_Handled;
+}
+
+void SetMax(int max){
 	SetConVarInt(cMax, max==4?-1:max);
 	if(Count(Player)>=DefaultSlots) ServerCommand("sv_cookie 0");
 	CheckSlots();
 	PrintToChatAll("\x05[提示]\x01 已修改人数上限为%d人", max);
+}
+
+void SetAdvSp(){
+	AdvSp = !AdvSp;
+	PrintToChatAll("\x05[提示]\x01 已%s高级特感", AdvSp?"开启":"关闭");
 }
 
 void SetEntCount(const char[] ent, int count){
@@ -407,7 +450,7 @@ void Join(int client){
 	PrintToChat(client, "\x05[加入失败] \x04没有可接管的Bot");
 }
 
-int Count(Type fiter){
+int Count(Fiter_Type fiter){
 	int num = 0;
 	for(int i = 1; i<=MaxClients; i++){
 		if(!IsClientInGame(i) || IsClientInKickQueue(i)) continue;
