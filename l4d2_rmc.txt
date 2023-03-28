@@ -34,12 +34,6 @@
 				"linux"		"@_ZN14CServerGameDLL23ServerHibernationUpdateEb"
 				"windows"	"\x55\x8B\xEC\x8A*\x08\x83\xEC***\x33"
 			}
-			"ShouldAdvanceOnSurvivors"
-			{
-				"library"	"server"
-				"linux"		"@_ZNK19BossZombiePlayerBot24ShouldAdvanceOnSurvivorsEv"
-				"windows"	"\x56\x8B\xF1\xE8****\x84\xC0\x75*\x8B\x86\x80\x05\x00\x00"
-			}
 		}
 		"Functions"
 		{
@@ -56,13 +50,6 @@
 						"type"	"bool"
 					}
 				}
-			}
-			"ShouldAdvanceOnSurvivors"
-			{
-				"signature"		"ShouldAdvanceOnSurvivors"
-				"callconv"		"thiscall"
-				"return"		"bool"
-				"this"			"ignore"
 			}
 		}
     }
