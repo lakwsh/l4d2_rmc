@@ -15,7 +15,7 @@
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
 ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery, cUpdateMax, cMultHp, cTankHp, cMultHard;
 bool Enable = false, CanAway, hardMode = false;
-int DefaultSlots, MultHard, plList[32][4]; // ArrayStack
+int DefaultSlots, MultHard, plList[32][3]; // ArrayStack
 
 enum Fiter_Type{
 	Survivor,
@@ -284,7 +284,7 @@ public int voteCallback(Menu menu, MenuAction action, int param1, int param2){
 			PrintToChatAll("\x05[提示]\x01 投票未全票通过,修改失败");
 			return 0;
 		}
-		char tmp[13], display[64];
+		char tmp[14], display[64];
 		menu.GetItem(1, tmp, sizeof(tmp), _, display, sizeof(display));
 		if(StrEqual(tmp, "###MAX_NO###")){
 			menu.GetItem(0, tmp, sizeof(tmp), _, display, sizeof(display));
