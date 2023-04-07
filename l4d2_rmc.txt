@@ -34,6 +34,12 @@
 				"linux"		"@_ZN14CServerGameDLL23ServerHibernationUpdateEb"
 				"windows"	"\x55\x8B\xEC\x8A*\x08\x83\xEC***\x33"
 			}
+			"GetScriptValueInt"
+			{
+				"library"	"server"
+				"linux"		"@_ZN9CDirector14GetScriptValueEPKci"
+				"windows"	"\x55\x8B\xEC\x8B\x81\xF8\x03\x00\x00********************************************************************************************\x8B\x45\x0C"
+			}
 		}
 		"Functions"
 		{
@@ -48,6 +54,24 @@
 					"bHibernating"
 					{
 						"type"	"bool"
+					}
+				}
+			}
+			"GetScriptValueInt"
+			{
+				"signature"		"GetScriptValueInt"
+				"callconv"		"thiscall"
+				"return"		"int"
+				"this"			"ignore"
+				"arguments"
+				{
+					"pszKey"
+					{
+						"type"	"charptr"
+					}
+					"defaultVal"
+					{
+						"type"	"int"
 					}
 				}
 			}

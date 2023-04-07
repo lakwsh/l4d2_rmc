@@ -13,9 +13,9 @@
 #define isAdmin(%1)			GetAdminFlag(GetUserAdmin(%1), Admin_Generic)
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
-ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery, cUpdateMax, cMultHp, cTankHp;
-bool Enable = false, CanAway;
-int DefaultSlots, plList[32][3]; // ArrayStack
+ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery, cUpdateMax, cMultHp, cTankHp, cMultHard;
+bool Enable = false, CanAway, hardMode = false;
+int DefaultSlots, MultHard, plList[32][4]; // ArrayStack
 
 enum Fiter_Type{
 	Survivor,
@@ -23,11 +23,17 @@ enum Fiter_Type{
 	Bot
 };
 
+enum Save_Key{
+	i_Id = 0,
+	i_Hp,
+	i_Rev
+}
+
 public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.1.3",
+	version = "2.1.4",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -67,8 +73,10 @@ public void OnPluginStart(){
 	hGoAway = EndPrepSDKCall();
 	if(hGoAway==INVALID_HANDLE) SetFailState("GoAwayFromKeyboard Signature broken.");
 
-	DHookSetup hDetour = DHookCreateFromConf(hGameData, "HibernationUpdate");
-	if(!hDetour || !DHookEnableDetour(hDetour, true, OnHibernationUpdate)) SetFailState("Failed to hook HibernationUpdate");
+	DHookSetup hDetour1 = DHookCreateFromConf(hGameData, "HibernationUpdate");
+	if(!hDetour1 || !DHookEnableDetour(hDetour1, true, OnHibernationUpdate)) SetFailState("Failed to hook HibernationUpdate");
+	DHookSetup hDetour2 = DHookCreateFromConf(hGameData, "GetScriptValueInt");
+	if(!hDetour2 || !DHookEnableDetour(hDetour2, true, OnGetScriptValue)) SetFailState("Failed to hook GetScriptValue(int)");
 
 	CloseHandle(hGameData);
 
@@ -82,6 +90,7 @@ public void OnPluginStart(){
 	RegConsoleCmd("sm_away", Cmd_Away);
 	RegConsoleCmd("sm_zs", Cmd_Kill);
 	RegConsoleCmd("sm_setmax", Cmd_SetMax);
+	RegConsoleCmd("sm_hard", Cmd_Hard);
 	RegConsoleCmd("sm_info", Cmd_Info);
 	RegAdminCmd("sm_fh", Cmd_Spawn, ADMFLAG_CHEATS, "复活");
 
@@ -92,6 +101,7 @@ public void OnPluginStart(){
 	cMultHp = CreateConVar("rmc_multhp", "1", "是否开启坦克多倍血量", 0, true, 0.0, true, 1.0);
 	cRecovery = CreateConVar("rmc_recovery", "1", "是否开启重复进服恢复血量功能", 0, true, 0.0, true, 1.0);
 	cUpdateMax = CreateConVar("rmc_updatemax", "1", "是否开启自动设置客户端数功能", 0, true, 0.0, true, 1.0);
+	cMultHard = CreateConVar("rmc_multhard", "2", "困难模式最大特感倍率", 0, true, 1.0, true, 8.0);
 	AutoExecConfig(true, "l4d2_rmc");
 
 	SetConVarBounds(FindConVar("survivor_limit"), ConVarBound_Upper, true, 16.0);
@@ -99,6 +109,7 @@ public void OnPluginStart(){
 	cTankHp = FindConVar("z_tank_health");
 
 	DefaultSlots = GetConVarInt(cDefaultSlots);
+	MultHard = GetConVarInt(cMultHard);
 	SetConVarInt(cMax, DefaultSlots==4?-1:DefaultSlots);
 }
 
@@ -109,14 +120,16 @@ public void OnEnableChanged(ConVar convar, const char[] oldValue, const char[] n
 public void OnMapStart(){
 	CanAway = GetConVarBool(cCanAway);
 	DefaultSlots = GetConVarInt(cDefaultSlots);
-	plList[0][0] = 0;	// reset
+	MultHard = GetConVarInt(cMultHard);
+	plList[0][i_Id] = 0;	// reset
 }
 
 public void OnRoundEnd(Event event, const char[] name, bool dontBroadcast){
-	plList[0][0] = 0;	// reset
+	plList[0][i_Id] = 0;	// reset
 }
 
 public MRESReturn OnHibernationUpdate(DHookParam hParams){
+	hardMode = false;
 	if(!Enable || !DHookGetParam(hParams, 1)) return MRES_Ignored;
 	PrintToServer("[DEBUG] 重置人数设置...");
 	if(GetConVarInt(cUpdateMax)==1) ServerCommand("sv_setmax 18");
@@ -125,26 +138,42 @@ public MRESReturn OnHibernationUpdate(DHookParam hParams){
 	return MRES_Handled;
 }
 
+public MRESReturn OnGetScriptValue(DHookReturn hReturn, DHookParam hParams){
+	if(!hardMode) return MRES_Ignored;
+	char pszKey[32];
+	DHookGetParamString(hParams, 1, pszKey, sizeof(pszKey));
+	if(StrEqual(pszKey, "PreferredMobDirection")){
+		DHookSetReturn(hReturn, 7);	// SPAWN_IN_FRONT_OF_SURVIVORS
+		return MRES_Supercede;
+	}else if(StrEqual(pszKey, "MaxSpecials")){
+		int ret = DHookGetReturn(hReturn);
+		if(ret>0){
+			DHookSetReturn(hReturn, ret*MultHard);
+			return MRES_Supercede;
+		}
+	}
+	return MRES_Ignored;
+}
+
 public void OnPlayerAfk(Event event, const char[] name, bool dontBroadcast){
-	if(!Enable || GetConVarInt(cRecovery)!=1) return;
 	int client = GetClientOfUserId(GetEventInt(event, "player", 0));
 	if(!client || !isPlayer(client) || !isSurvivor(client)) return; // 创建bot会触发
 	int i = 0;
-	for(; i<sizeof(plList)-1 && plList[i][0]; i++){}	// count
+	for(; i<sizeof(plList)-1 && plList[i][i_Id]; i++){}	// count
 	for(int j = i; j>0; j--){
-		plList[j][0] = plList[j-1][0];
-		plList[j][1] = plList[j-1][1];
-		plList[j][2] = plList[j-1][2];	// FIXME: 倒地状态血量
+		for(int k = 0; k<3; k++){	// Save_Key
+			plList[j][k] = plList[j-1][k];
+		}
 	}
-	plList[0][0] = GetSteamAccountID(client);
+	plList[0][i_Id] = GetSteamAccountID(client);
 	if(IsPlayerAlive(client)){
-		plList[0][1] = GetClientHealth(client);
-		plList[0][2] = GetEntProp(client, Prop_Send, "m_currentReviveCount");
+		plList[0][i_Hp] = GetClientHealth(client);
+		plList[0][i_Rev] = GetEntProp(client, Prop_Send, "m_currentReviveCount");	// FIXME: 倒地状态血量
 	}else{
-		plList[0][1] = 0;
-		plList[0][2] = 0;
+		plList[0][i_Hp] = 0;
+		plList[0][i_Rev] = 0;
 	}
-	PrintToServer("[DEBUG] 保存数据 user[%d] hp[%d] rev[%d]", plList[0][0], plList[0][1], plList[0][2]);
+	PrintToServer("[DEBUG] 保存数据 id[%d] hp[%d] rev[%d]", plList[0][i_Id], plList[0][i_Hp], plList[0][i_Rev]);
 }
 
 public void OnTakeOver(Event event, const char[] name, bool dontBroadcast){
@@ -157,17 +186,17 @@ public void OnTakeOver(Event event, const char[] name, bool dontBroadcast){
 		PrintToChat(client, "\x05[提示] \x04无法验证steamid,默认死亡状态");
 		return;
 	}
-	for(int j = 0; j<sizeof(plList) && plList[j][0]; j++){ // 注意round_end
-		if(plList[j][0]==id){
-			PrintToServer("[DEBUG] user[%d] hp[%d] rev[%d]", plList[j][0], plList[j][1], plList[j][2]);
+	for(int j = 0; j<sizeof(plList) && plList[j][i_Id]; j++){ // 注意round_end
+		if(plList[j][i_Id]==id){
+			PrintToServer("[DEBUG] id[%d] hp[%d] rev[%d]", plList[j][i_Id], plList[j][i_Hp], plList[j][i_Rev]);
 			int flag = 0;
-			if(GetClientHealth(client)>plList[j][1]){
-				if(!plList[j][1]) ForcePlayerSuicide(client);
-				else SetEntityHealth(client, plList[j][1]);
+			if(GetClientHealth(client)>plList[j][i_Hp]){
+				if(!plList[j][i_Hp]) ForcePlayerSuicide(client);
+				else SetEntityHealth(client, plList[j][i_Hp]);
 				flag |= 1;
 			}
-			if(GetEntProp(client, Prop_Send, "m_currentReviveCount")<plList[j][2]){
-				SetEntProp(client, Prop_Send, "m_currentReviveCount", plList[j][2]);
+			if(GetEntProp(client, Prop_Send, "m_currentReviveCount")<plList[j][i_Rev]){
+				SetEntProp(client, Prop_Send, "m_currentReviveCount", plList[j][i_Rev]);
 				flag |= 2;
 			}
 			if(flag) PrintToChatAll("\x05[提示] \x03%N \x04重复接管Bot, %s%s%s", client, flag&1?"恢复血量":"", flag==3?"及":(flag&2?"恢复":""), flag&2?"倒地次数":"");
@@ -195,8 +224,8 @@ public Action JoinTeam(Handle timer, any uid){
 	int client = GetClientOfUserId(uid);
 	if(client && isPlayer(client)){
 		PrintToChat(client, "\x04[提示] \x01多人插件:\x05 %s", Enable?"开启":"关闭");
-		PrintToChat(client, "\x05[指令] \x03!setmax <人数> \x04修改人数上限, \x03!zs \x04自杀");
-		PrintToChat(client, "\x05[指令] \x03!jg \x04加入生还者, \x03!away \x04加入观察者");
+		PrintToChat(client, "\x05[指令] \x03!setmax <人数> \x04修改人数上限, \x03!hard \x04困难模式");
+		PrintToChat(client, "\x05[指令] \x03!jg \x04加入生还者, \x03!away \x04加入观察者, \x03!zs \x04自杀");
 		if(Enable){
 			PrintToChat(client, "\x04[提示] \x01多倍药物:\x05 %s, \x01Tank多倍血量:\x05 %s", GetConVarInt(cMultMed)?"已开启":"已关闭", GetConVarInt(cMultHp)?"已开启":"已关闭");
 			if(isSpectator(client)) Join(client);
@@ -229,19 +258,39 @@ public Action Cmd_SetMax(int client, int args){
 	return Plugin_Handled;
 }
 
+public Action Cmd_Hard(int client, int args){
+	if(!client || isAdmin(client)){	// console
+		SetHardMode();
+	}else{
+		if(IsVoteInProgress()){
+			PrintToChatAll("\x05[提示]\x01 投票进行中");
+			return Plugin_Handled;
+		}
+		Menu vote = new Menu(voteCallback, MenuAction_VoteEnd);
+		vote.SetTitle("%s困难模式", hardMode?"关闭":"开启");
+		vote.AddItem(hardMode?"0":"1", "Yes");	// 0
+		vote.AddItem("###HARD_NO###", "No");	// 1
+		vote.ExitButton = false;
+		vote.DisplayVoteToAll(20);
+	}
+	return Plugin_Handled;
+}
+
 public int voteCallback(Menu menu, MenuAction action, int param1, int param2){
 	if(action==MenuAction_VoteEnd){
+		int votes, totalVotes;
+		GetMenuVoteInfo(param2, votes, totalVotes);
+		if(param1==1 || votes!=totalVotes){
+			PrintToChatAll("\x05[提示]\x01 投票未全票通过,修改失败");
+			return 0;
+		}
 		char tmp[13], display[64];
 		menu.GetItem(1, tmp, sizeof(tmp), _, display, sizeof(display));
 		if(StrEqual(tmp, "###MAX_NO###")){
-			int votes, totalVotes;
-			GetMenuVoteInfo(param2, votes, totalVotes);
-			if(param1==1 || votes!=totalVotes){
-				PrintToChatAll("\x05[提示]\x01 投票未全票通过,人数上限未修改");
-			}else{
-				menu.GetItem(0, tmp, sizeof(tmp), _, display, sizeof(display));
-				SetMax(StringToInt(tmp));
-			}
+			menu.GetItem(0, tmp, sizeof(tmp), _, display, sizeof(display));
+			SetMax(StringToInt(tmp));
+		}else if(StrEqual(tmp, "###HARD_NO###")){
+			SetHardMode();
 		}
 	}
 	return 0;
@@ -257,6 +306,11 @@ void SetMax(int max){
 	if(Count(Player)>=DefaultSlots) ServerCommand("sv_cookie 0");
 	CheckSlots();
 	PrintToChatAll("\x05[提示]\x01 已修改人数上限为%d人", max);
+}
+
+void SetHardMode(){
+	hardMode = !hardMode;
+	PrintToChatAll("\x05[提示]\x01 已%s困难模式", hardMode?"开启":"关闭");
 }
 
 void SetEntCount(const char[] ent, int count){
@@ -397,8 +451,8 @@ void BotControl(int need){
 bool IsClientDead(int client, bool ignore = true){
 	int id = GetSteamAccountID(client);
 	if(!id) return !ignore;
-	for(int j = 0; j<sizeof(plList) && plList[j][0]; j++){
-		if(plList[j][0]==id) return !plList[j][1];
+	for(int j = 0; j<sizeof(plList) && plList[j][i_Id]; j++){
+		if(plList[j][i_Id]==id) return !plList[j][i_Hp];
 	}
 	return false;
 }
