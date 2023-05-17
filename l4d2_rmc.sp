@@ -13,8 +13,8 @@
 #define isAdmin(%1)			GetAdminFlag(GetUserAdmin(%1), Admin_Generic)
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
-ConVar cMax, cCanAway, cAwayMode, cDefaultSlots, cMultMed, cRecovery, cUpdateMax, cMultHp, cTankHp, cMultHard;
-bool Enable = false, CanAway, hardMode = false;
+ConVar cMax, cCanAway, cAwayMode, cCanRespawn, cDefaultSlots, cMultMed, cRecovery, cUpdateMax, cMultHp, cTankHp, cMultHard;
+bool Enable = false, CanAway, CanRespawn, hardMode = false;
 int DefaultSlots, MultHard, plList[32][3]; // ArrayStack
 
 enum Fiter_Type{
@@ -33,7 +33,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.1.4",
+	version = "2.1.5",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -92,10 +92,11 @@ public void OnPluginStart(){
 	RegConsoleCmd("sm_setmax", Cmd_SetMax);
 	RegConsoleCmd("sm_hard", Cmd_Hard);
 	RegConsoleCmd("sm_info", Cmd_Info);
-	RegAdminCmd("sm_fh", Cmd_Spawn, ADMFLAG_CHEATS, "复活");
+	RegConsoleCmd("sm_fh", Cmd_Respawn);
 
 	cCanAway = CreateConVar("rmc_away", "1", "允许非管理员使用!away加入观察者", 0, true, 0.0, true, 1.0);
 	cAwayMode = CreateConVar("rmc_awaymode", "0", "加入观察者类型 0=切换阵营模式 1=普通模式", 0, true, 0.0, true, 1.0);
+	cCanRespawn = CreateConVar("rmc_fh", "0", "允许非管理员使用!fh指令复活", 0, true, 0.0, true, 1.0);
 	cDefaultSlots = CreateConVar("rmc_defaultslots", "4", "默认玩家数", 0, true, 1.0, true, 16.0);
 	cMultMed = CreateConVar("rmc_multmed", "1", "是否开启多倍药物功能", 0, true, 0.0, true, 1.0);
 	cMultHp = CreateConVar("rmc_multhp", "1", "是否开启坦克多倍血量", 0, true, 0.0, true, 1.0);
@@ -119,6 +120,7 @@ public void OnEnableChanged(ConVar convar, const char[] oldValue, const char[] n
 
 public void OnMapStart(){
 	CanAway = GetConVarBool(cCanAway);
+	CanRespawn = GetConVarBool(cCanRespawn);
 	DefaultSlots = GetConVarInt(cDefaultSlots);
 	MultHard = GetConVarInt(cMultHard);
 	plList[0][i_Id] = 0;	// reset
@@ -392,24 +394,31 @@ public Action Cmd_Kill(int client, int args){
 }
 
 public Action Cmd_Away(int client, int args){
-	if(!CanAway && !GetUserFlagBits(client)){
-		PrintToChat(client, "\x05[失败] \x04非管理员不允许使用!away指令");
-		return Plugin_Handled;
+	if(client && isPlayer(client)){
+		if(!CanAway && !GetUserFlagBits(client)){
+			PrintToChat(client, "\x05[失败] \x04你无权使用!away指令");
+			return Plugin_Handled;
+		}
+		if(GetConVarBool(cAwayMode)) SDKCall(hGoAway, client);
+		else ChangeClientTeam(client, TEAM_SPECTATOR);
 	}
-	if(GetConVarBool(cAwayMode)) SDKCall(hGoAway, client);
-	else ChangeClientTeam(client, TEAM_SPECTATOR);
 	return Plugin_Handled;
 }
 
-public Action Cmd_Spawn(int client, int args){
-	if(!client || !isPlayer(client) || IsPlayerAlive(client)) return Plugin_Handled;
-	SDKCall(hRespawn, client);
-	for(int i = 1; i<=MaxClients; i++){
-		if(i!=client && isPlayer(i) && IsPlayerAlive(i)){
-			float Origin[3];
-			GetClientAbsOrigin(i, Origin);
-			TeleportEntity(client, Origin, NULL_VECTOR, NULL_VECTOR);
-			break;
+public Action Cmd_Respawn(int client, int args){
+	if(client && isPlayer(client) && !IsPlayerAlive(client)){
+		if(!CanRespawn && !GetAdminFlag(GetUserAdmin(client), Admin_Cheats)){
+			PrintToChat(client, "\x05[失败] \x04你无权使用!fh指令");
+			return Plugin_Handled;
+		}
+		SDKCall(hRespawn, client);
+		for(int i = 1; i<=MaxClients; i++){
+			if(i!=client && isPlayer(i) && IsPlayerAlive(i)){
+				float Origin[3];
+				GetClientAbsOrigin(i, Origin);
+				TeleportEntity(client, Origin, NULL_VECTOR, NULL_VECTOR);
+				break;
+			}
 		}
 	}
 	return Plugin_Handled;
