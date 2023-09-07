@@ -13,8 +13,8 @@
 #define isAdmin(%1)			GetAdminFlag(GetUserAdmin(%1), Admin_Generic)
 
 Handle hSpec = INVALID_HANDLE, hSwitch = INVALID_HANDLE, hRespawn = INVALID_HANDLE, hGoAway = INVALID_HANDLE;
-ConVar cMax, cCanAway, cAwayMode, cCanRespawn, cDefaultSlots, cMultMed, cRecovery, cUpdateMax, cMultHp, cTankHp, cMultHard;
-bool Enable = false, CanAway, CanRespawn, hardMode = false;
+ConVar cMax, cCanAway, cAwayMode, cCanRespawn, cCanTeleport, cDefaultSlots, cMultMed, cRecovery, cUpdateMax, cMultHp, cTankHp, cMultHard;
+bool Enable = false, CanAway, CanTeleport, CanRespawn, hardMode = false;
 int DefaultSlots, MultHard, plList[32][3]; // ArrayStack
 
 enum Fiter_Type{
@@ -33,7 +33,7 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.1.5",
+	version = "2.1.7",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
@@ -93,10 +93,12 @@ public void OnPluginStart(){
 	RegConsoleCmd("sm_hard", Cmd_Hard);
 	RegConsoleCmd("sm_info", Cmd_Info);
 	RegConsoleCmd("sm_fh", Cmd_Respawn);
+	RegConsoleCmd("sm_tp", Cmd_Teleport);
 
 	cCanAway = CreateConVar("rmc_away", "1", "允许非管理员使用!away加入观察者", 0, true, 0.0, true, 1.0);
 	cAwayMode = CreateConVar("rmc_awaymode", "0", "加入观察者类型 0=切换阵营模式 1=普通模式", 0, true, 0.0, true, 1.0);
 	cCanRespawn = CreateConVar("rmc_fh", "0", "允许非管理员使用!fh指令复活", 0, true, 0.0, true, 1.0);
+	cCanTeleport = CreateConVar("rmc_tp", "0", "允许非管理员使用!tp指令传送Bot", 0, true, 0.0, true, 1.0);
 	cDefaultSlots = CreateConVar("rmc_defaultslots", "4", "默认玩家数", 0, true, 1.0, true, 16.0);
 	cMultMed = CreateConVar("rmc_multmed", "1", "是否开启多倍药物功能", 0, true, 0.0, true, 1.0);
 	cMultHp = CreateConVar("rmc_multhp", "1", "是否开启坦克多倍血量", 0, true, 0.0, true, 1.0);
@@ -121,6 +123,7 @@ public void OnEnableChanged(ConVar convar, const char[] oldValue, const char[] n
 public void OnMapStart(){
 	CanAway = GetConVarBool(cCanAway);
 	CanRespawn = GetConVarBool(cCanRespawn);
+	CanTeleport = GetConVarBool(cCanTeleport);
 	DefaultSlots = GetConVarInt(cDefaultSlots);
 	MultHard = GetConVarInt(cMultHard);
 	plList[0][i_Id] = 0;	// reset
@@ -424,6 +427,23 @@ public Action Cmd_Respawn(int client, int args){
 	return Plugin_Handled;
 }
 
+public Action Cmd_Teleport(int client, int args){
+	if(client && isPlayer(client) && isSurvivor(client) && IsPlayerAlive(client)){
+		if(!CanTeleport && !GetAdminFlag(GetUserAdmin(client), Admin_Cheats)){
+			PrintToChat(client, "\x05[失败] \x04你无权使用!tp指令");
+			return Plugin_Handled;
+		}
+		float Origin[3];
+		GetClientAbsOrigin(client, Origin);
+		for(int i = 1; i<=MaxClients; i++){
+			if(isBot(i) && isSurvivor(i) && IsPlayerAlive(i)){
+				TeleportEntity(i, Origin, NULL_VECTOR, NULL_VECTOR);
+			}
+		}
+	}
+	return Plugin_Handled;
+}
+
 void BotControl(int need){
 	int total = Count(Survivor);
 	if(!need || need==total) return;
@@ -442,7 +462,10 @@ void BotControl(int need){
 			GetClientAbsOrigin(i, Origin);
 			do{
 				int botNo = CreateFakeClient("Bot");
-				if(!botNo) SetFailState("Error in CreateBot");
+				if(!botNo){
+					PrintToServer("Error in CreateBot");
+					break;
+				}
 				ChangeClientTeam(botNo, TEAM_SURVIVOR);
 				DispatchKeyValue(botNo, "classname", "SurvivorBot");
 				DispatchSpawn(botNo);
