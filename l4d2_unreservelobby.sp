@@ -3,10 +3,10 @@
 #define PLUGIN_NAME				"[L4D2] Remove Lobby Reservation"
 #define PLUGIN_AUTHOR			"Downtown1, Anime4000, sorallll, lakwsh"
 #define PLUGIN_DESCRIPTION		"Removes lobby reservation when server is full"
-#define PLUGIN_VERSION			"2.1.2"
+#define PLUGIN_VERSION			"3.0.0"
 #define PLUGIN_URL				"http://forums.alliedmods.net/showthread.php?t=87759"
 
-ConVar g_cvUnreserve, g_cvGameMode, g_cvCookie, g_cvLobbyOnly, g_cvMaxPlayers;
+ConVar g_cvUnreserve, g_cvGameMode, g_cvLobbyOnly;
 bool g_bUnreserve;
 
 public Plugin myinfo = {
@@ -22,13 +22,11 @@ public void OnPluginStart() {
 	g_cvUnreserve = CreateConVar("l4d_unreserve_full", "1", "Automatically unreserve server after a full lobby joins", FCVAR_SPONLY|FCVAR_NOTIFY);
 	g_cvUnreserve.AddChangeHook(CvarChanged);
 	g_cvGameMode = FindConVar("mp_gamemode");
-	g_cvCookie = FindConVar("sv_lobby_cookie");
 	g_cvLobbyOnly = FindConVar("sv_allow_lobby_connect_only");
-	g_cvMaxPlayers = FindConVar("sv_maxplayers");
 
 	HookEvent("player_disconnect", Event_PlayerDisconnect, EventHookMode_Pre);
 
-	RegAdminCmd("sm_unreserve", cmdUnreserve, ADMFLAG_BAN, "sm_unreserve - manually force removes the lobby reservation");
+	RegAdminCmd("sm_unreserve", cmdUnreserve, ADMFLAG_KICK, "sm_unreserve - manually force removes the lobby reservation");
 }
 
 Action cmdUnreserve(int client, int args) {
@@ -50,7 +48,7 @@ void GetCvars() {
 }
 
 public void OnClientPutInServer(int client) {
-	if (!g_bUnreserve || g_cvMaxPlayers.IntValue == -1)
+	if (!g_bUnreserve || FindConVar("sv_maxplayers").IntValue == -1)
 		return;
 
 	if (IsFakeClient(client))
@@ -64,7 +62,7 @@ public void OnClientPutInServer(int client) {
 
 //OnClientDisconnect will fired when changing map, issued by gH0sTy at http://docs.sourcemod.net/api/index.php?fastload=show&id=390&
 void Event_PlayerDisconnect(Event event, const char[] name, bool dontBroadcast) {
-	if (g_cvMaxPlayers.IntValue == -1)
+	if (FindConVar("sv_maxplayers").IntValue == -1)
 		return;
 
 	int client = GetClientOfUserId(event.GetInt("userid"));
@@ -76,7 +74,7 @@ void Event_PlayerDisconnect(Event event, const char[] name, bool dontBroadcast) 
 
 	if (!GetConnectedPlayer(client))
 	{
-		g_cvCookie.SetString("0");
+		FindConVar("sv_lobby_cookie").SetString("0");
 		g_cvLobbyOnly.SetInt(1);
 		return;
 	}
@@ -84,8 +82,8 @@ void Event_PlayerDisconnect(Event event, const char[] name, bool dontBroadcast) 
 	if (IsServerLobbyFull(client))
 		return;
 
-	char sCookie[20];
-	g_cvCookie.GetString(sCookie, sizeof(sCookie));
+	char sCookie[20] = {0};
+	FindConVar("sv_lobby_cookie").GetString(sCookie, sizeof(sCookie));
 	if (StrEqual(sCookie, "0"))
 		return;
 
@@ -96,7 +94,7 @@ bool IsServerLobbyFull(int client)
 {
 	int humans = GetConnectedPlayer(client);
 
-	char sGameMode[32];
+	char sGameMode[32] = {0};
 	g_cvGameMode.GetString(sGameMode, sizeof(sGameMode));
 	if (StrEqual(sGameMode, "versus") || StrEqual(sGameMode, "scavenge"))
 	{
@@ -106,7 +104,7 @@ bool IsServerLobbyFull(int client)
 }
 
 int GetConnectedPlayer(int client) {
-	int count;
+	int count = 0;
 	for (int i = 1; i <= MaxClients; i++) {
 		if (i != client && IsClientConnected(i) && !IsFakeClient(i))
 			count++;
