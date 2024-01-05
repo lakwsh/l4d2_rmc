@@ -4,6 +4,12 @@
     {
 		"Signatures"
 		{
+			"CreatePlayerBot"
+			{
+				"library"	"server"
+				"linux"		"@_Z22NextBotCreatePlayerBotI11SurvivorBotEPT_PKc"
+				"windows"	"\x55\x8B\xEC\x83\xEC*\xA1****\x33\xC5\x89\x45\xFC**\x8B*\x08\x68"
+			}
 			"SetHumanSpec"
 			{
 				"library"	"server"
@@ -34,12 +40,6 @@
 				"linux"		"@_ZN14CServerGameDLL23ServerHibernationUpdateEb"
 				"windows"	"\x55\x8B\xEC\x8A*\x08\x83\xEC***\x33"
 			}
-			"GetScriptValueInt"
-			{
-				"library"	"server"
-				"linux"		"@_ZN9CDirector14GetScriptValueEPKci"
-				"windows"	"\x55\x8B\xEC\x8B\x81\xB8\x04\x00\x00********************************************************************************************************************\x8B\x45\x0C"
-			}
 		}
 		"Functions"
 		{
@@ -54,24 +54,6 @@
 					"bHibernating"
 					{
 						"type"	"bool"
-					}
-				}
-			}
-			"GetScriptValueInt"
-			{
-				"signature"		"GetScriptValueInt"
-				"callconv"		"thiscall"
-				"return"		"int"
-				"this"			"ignore"
-				"arguments"
-				{
-					"pszKey"
-					{
-						"type"	"charptr"
-					}
-					"defaultVal"
-					{
-						"type"	"int"
 					}
 				}
 			}
