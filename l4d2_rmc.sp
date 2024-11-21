@@ -33,13 +33,14 @@ public Plugin myinfo = {
 	name = "[L4D2] Multiplayer",
 	description = "L4D2 Multiplayer Plugin",
 	author = "lakwsh",
-	version = "2.2.0",
+	version = "2.2.1",
 	url = "https://github.com/lakwsh/l4d2_rmc"
 };
 
 public void OnPluginStart() {
-	if(!FindConVar("sv_maxplayers")) SetFailState("L4DToolZ not found!");
-	FindConVar("sv_maxplayers").AddChangeHook(OnEnableChanged);
+	ConVar cMax = FindConVar("sv_maxplayers");
+	if(!cMax) SetFailState("L4DToolZ not found!");
+	cMax.AddChangeHook(OnEnableChanged);
 
 	GameData hGameData = new GameData("l4d2_rmc");
 	if(!hGameData) SetFailState("Failed to load 'l4d2_rmc.txt' gamedata.");
@@ -111,7 +112,7 @@ public void OnPluginStart() {
 	cTankHp = FindConVar("z_tank_health");
 
 	DefaultSlots = cDefaultSlots.IntValue;
-	FindConVar("sv_maxplayers").IntValue = DefaultSlots == 4 ? -1 : DefaultSlots;
+	cMax.IntValue = DefaultSlots == 4 ? -1 : DefaultSlots;
 }
 
 public void OnEnableChanged(ConVar convar, const char[] oldValue, const char[] newValue) {
@@ -209,7 +210,7 @@ public Action JoinTeam(Handle timer, any uid) {
 	int client = GetClientOfUserId(uid);
 	if(client && isPlayer(client)) {
 		PrintToChat(client, "\x04[提示] \x01多人插件:\x05 %s", Enable ? "开启" : "关闭");
-		PrintToChat(client, "\x05[指令] \x03!setmax <人数> \x04修改人数上限, \x03!zs \x04自杀");
+		PrintToChat(client, "\x05[指令] \x03!setmax \x04修改人数上限, \x03!zs \x04自杀");
 		PrintToChat(client, "\x05[指令] \x03!jg \x04加入生还者, \x03!away \x04加入观察者");
 		if(Enable) {
 			PrintToChat(client, "\x04[提示] \x01多倍药物:\x05 %s, \x01Tank多倍血量:\x05 %s", cMultMed.IntValue ? "已开启" : "已关闭", GetConVarInt(cMultHp) ? "已开启" : "已关闭");
@@ -220,25 +221,28 @@ public Action JoinTeam(Handle timer, any uid) {
 }
 
 public Action Cmd_SetMax(int client, int args) {
-	if(args == 1) {
-		char tmp[3];
-		GetCmdArg(1, tmp, sizeof(tmp));
-		int max = StringToInt(tmp);
-		if(max < 1 || max > 16) max = DefaultSlots;
-		if(!client || isAdmin(client)) {  // console
-			SetMax(max);
-		} else {
-			if(IsVoteInProgress()) {
-				PrintToChatAll("\x05[提示]\x01 投票进行中");
-				return Plugin_Handled;
-			}
-			Menu vote = new Menu(voteCallback, MenuAction_VoteEnd);
-			vote.SetTitle("修改人数上限为%d", max);
-			vote.AddItem(tmp, "Yes");			// 0
-			vote.AddItem("###MAX_NO###", "No");  // 1
-			vote.ExitButton = false;
-			vote.DisplayVoteToAll(20);
-		}
+	if(args != 1) {
+		ReplyToCommand(client, "!setmax <人数>");
+		return Plugin_Handled;
+	}
+	if(IsVoteInProgress()) {
+		ReplyToCommand(client, "投票进行中");
+		return Plugin_Handled;
+	}
+	char tmp[3];
+	GetCmdArg(1, tmp, sizeof(tmp));
+	int max = StringToInt(tmp);
+	if(max < 1 || max > 16) max = DefaultSlots;
+	if(!client || isAdmin(client)) {  // console
+		SetMax(max);
+	} else {
+		IntToString(max, tmp, sizeof(tmp));
+		Menu vote = new Menu(voteCallback, MenuAction_VoteEnd);
+		vote.SetTitle("修改人数上限为%d", max);
+		vote.AddItem(tmp, "Yes");			// 0
+		vote.AddItem("###MAX_NO###", "No");  // 1
+		vote.ExitButton = false;
+		vote.DisplayVoteToAll(20);
 	}
 	return Plugin_Handled;
 }
@@ -251,12 +255,10 @@ public int voteCallback(Menu menu, MenuAction action, int param1, int param2) {
 			PrintToChatAll("\x05[提示]\x01 投票未全票通过,修改失败");
 			return 0;
 		}
-		char tmp[14], display[64];
-		menu.GetItem(1, tmp, sizeof(tmp), _, display, sizeof(display));
-		if(StrEqual(tmp, "###MAX_NO###")) {
-			menu.GetItem(0, tmp, sizeof(tmp), _, display, sizeof(display));
-			SetMax(StringToInt(tmp));
-		}
+		char tmp[14], dsp[16];
+		menu.GetItem(0, tmp, sizeof(tmp), _, dsp, sizeof(dsp));
+		int max = StringToInt(tmp);
+		SetMax(max);
 	}
 	return 0;
 }
@@ -267,7 +269,7 @@ public Action Cmd_Info(int client, int args) {
 }
 
 void SetMax(int max) {
-	FindConVar("sv_maxplayers").IntValue = max == 4 ? -1 : max;
+	FindConVar("sv_maxplayers").IntValue = max;
 	if(Count(Player) >= DefaultSlots) ServerCommand("sv_cookie 0");
 	CheckSlots();
 	PrintToChatAll("\x05[提示]\x01 已修改人数上限为%d人", max);
